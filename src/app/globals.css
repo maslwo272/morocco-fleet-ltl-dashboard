@@ -1,0 +1,110 @@
+@import url("https://fonts.googleapis.com/earlyaccess/droidarabicnaskh.css");
+@import url("https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&family=Cairo:wght@400;600;700&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Tajawal:wght@400;500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-600: #2563eb;
+  --brand-700: #1d4ed8;
+  --brand-400: #60a5fa;
+  --brand-50: rgba(37, 99, 235, 0.08);
+  --brand-200: rgba(37, 99, 235, 0.25);
+  --active-font-sans: var(--font-sans), "Droid Arabic Naskh", var(--font-arabic), system-ui, sans-serif;
+  --active-font-arabic: "Droid Arabic Naskh", var(--font-arabic), var(--font-sans), system-ui, sans-serif;
+  --active-font-mono: var(--font-mono), "Droid Arabic Naskh", var(--font-arabic), monospace;
+}
+
+body {
+  overflow-x: hidden;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Dynamic White-Label Typography Engine */
+.theme-root {
+  font-family: var(--active-font-sans) !important;
+}
+
+.theme-root[dir="rtl"],
+.theme-root .font-arabic {
+  font-family: var(--active-font-arabic) !important;
+  line-height: 1.65;
+}
+
+.theme-root .font-mono {
+  font-family: var(--active-font-mono) !important;
+}
+
+[dir="rtl"] * {
+  letter-spacing: 0 !important;
+}
+
+/* Dynamic White-Label Brand Accent Overrides */
+.theme-root .bg-blue-600 {
+  background-color: var(--brand-600) !important;
+}
+.theme-root .hover\:bg-blue-700:hover {
+  background-color: var(--brand-700) !important;
+}
+.theme-root .text-blue-600,
+.theme-root .text-blue-700 {
+  color: var(--brand-600) !important;
+}
+.dark .theme-root .dark\:text-blue-400,
+.dark .theme-root .dark\:text-blue-300 {
+  color: var(--brand-400) !important;
+}
+.dark .theme-root .dark\:bg-blue-600 {
+  background-color: var(--brand-600) !important;
+}
+.theme-root .border-blue-600,
+.theme-root .border-blue-600\/70,
+.theme-root .border-blue-500\/70,
+.theme-root .border-blue-500\/60 {
+  border-color: var(--brand-600) !important;
+}
+.theme-root .bg-blue-50,
+.theme-root .bg-blue-50\/50,
+.theme-root .bg-blue-50\/40 {
+  background-color: var(--brand-50) !important;
+}
+.theme-root .border-blue-200,
+.theme-root .border-blue-200\/70 {
+  border-color: var(--brand-200) !important;
+}
+
+/* Dynamic Surface & Card Border-Radius Presets */
+.theme-root[data-surface-style="sharp"] .rounded-xl {
+  border-radius: 0.375rem !important;
+}
+.theme-root[data-surface-style="sharp"] .rounded-lg {
+  border-radius: 0.25rem !important;
+}
+.theme-root[data-surface-style="glass"] .rounded-xl {
+  border-radius: 1rem !important;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.07) !important;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle enterprise scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
