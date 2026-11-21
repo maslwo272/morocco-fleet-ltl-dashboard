@@ -58,6 +58,7 @@ import {
   syncDemoInstancesToSupabase,
   syncWorkspaceSettingsToSupabase,
 } from "@/lib/supabase/demoSync";
+import { ParsedExcelImportResult } from "@/lib/excel/fleetWorkbook";
 import { TRANSLATIONS } from "@/lib/i18n/translations";
 import { OverviewPage } from "@/components/OverviewPage";
 import { LiveMapPage } from "@/components/LiveMapPage";
@@ -98,22 +99,22 @@ function hydrateInstancesWithFleet(
       ...(inst.themeConfig || {}),
     },
     fleetData: {
-      trucks: inst.fleetData?.trucks?.length
+      trucks: Array.isArray(inst.fleetData?.trucks)
         ? inst.fleetData.trucks
         : INITIAL_MAP_TRUCKS,
-      ltlTrucks: inst.fleetData?.ltlTrucks?.length
+      ltlTrucks: Array.isArray(inst.fleetData?.ltlTrucks)
         ? inst.fleetData.ltlTrucks
         : INITIAL_LTL_TRUCKS,
-      shipments: inst.fleetData?.shipments?.length
+      shipments: Array.isArray(inst.fleetData?.shipments)
         ? inst.fleetData.shipments
         : INITIAL_LTL_SHIPMENTS,
-      drivers: inst.fleetData?.drivers?.length
+      drivers: Array.isArray(inst.fleetData?.drivers)
         ? inst.fleetData.drivers
         : INITIAL_DRIVER_ECO_SCORES,
-      fuelPurchases: inst.fleetData?.fuelPurchases?.length
+      fuelPurchases: Array.isArray(inst.fleetData?.fuelPurchases)
         ? inst.fleetData.fuelPurchases
         : INITIAL_FUEL_PURCHASES,
-      alerts: inst.fleetData?.alerts?.length
+      alerts: Array.isArray(inst.fleetData?.alerts)
         ? inst.fleetData.alerts
         : INITIAL_TELEMETRY_ALERTS,
     },
@@ -482,6 +483,119 @@ export default function MoroccoFleetDashboard() {
       updateSpecificInstanceFleet(targetId, (f) => ({
         ...f,
         drivers: rerankDrivers(f.drivers.filter((d) => d.id !== driverId)),
+      }));
+    },
+    onAddShipment: (newShipment: LtlShipment) => {
+      updateSpecificInstanceFleet(targetId, (f) => ({
+        ...f,
+        shipments: [newShipment, ...f.shipments],
+      }));
+    },
+    onUpdateShipment: (updatedShipment: LtlShipment) => {
+      updateSpecificInstanceFleet(targetId, (f) => ({
+        ...f,
+        shipments: f.shipments.map((s) =>
+          s.id === updatedShipment.id ? updatedShipment : s
+        ),
+      }));
+    },
+    onDeleteShipment: (shipmentId: string) => {
+      updateSpecificInstanceFleet(targetId, (f) => ({
+        ...f,
+        shipments: f.shipments.filter((s) => s.id !== shipmentId),
+      }));
+    },
+    onBulkImportExcel: (
+      parsed: ParsedExcelImportResult,
+      mode: "merge" | "replace"
+    ) => {
+      updateSpecificInstanceFleet(targetId, (f) => {
+        if (mode === "replace") {
+          return {
+            trucks: parsed.trucks,
+            ltlTrucks: parsed.ltlTrucks,
+            shipments: parsed.shipments,
+            drivers: rerankDrivers(parsed.drivers),
+            fuelPurchases: parsed.fuelPurchases,
+            alerts: [],
+          };
+        }
+
+        // Merge / Update by code or plate or id
+        const mergedTrucks = [...f.trucks];
+        parsed.trucks.forEach((incoming) => {
+          const idx = mergedTrucks.findIndex(
+            (existing) =>
+              existing.code.toLowerCase() === incoming.code.toLowerCase() ||
+              existing.plate.toLowerCase() === incoming.plate.toLowerCase()
+          );
+          if (idx >= 0) {
+            mergedTrucks[idx] = { ...incoming, id: mergedTrucks[idx].id };
+          } else {
+            mergedTrucks.push(incoming);
+          }
+        });
+
+        const mergedLtlTrucks = [...f.ltlTrucks];
+        parsed.ltlTrucks.forEach((incoming) => {
+          const idx = mergedLtlTrucks.findIndex(
+            (existing) =>
+              existing.code.toLowerCase() === incoming.code.toLowerCase() ||
+              existing.plate.toLowerCase() === incoming.plate.toLowerCase()
+          );
+          if (idx >= 0) {
+            mergedLtlTrucks[idx] = { ...incoming, id: mergedLtlTrucks[idx].id };
+          } else {
+            mergedLtlTrucks.push(incoming);
+          }
+        });
+
+        const mergedDrivers = [...f.drivers];
+        parsed.drivers.forEach((incoming) => {
+          const idx = mergedDrivers.findIndex(
+            (existing) =>
+              existing.name.en.toLowerCase() === incoming.name.en.toLowerCase()
+          );
+          if (idx >= 0) {
+            mergedDrivers[idx] = { ...incoming, id: mergedDrivers[idx].id };
+          } else {
+            mergedDrivers.push(incoming);
+          }
+        });
+
+        const mergedShipments = [...f.shipments];
+        parsed.shipments.forEach((incoming) => {
+          const idx = mergedShipments.findIndex(
+            (existing) =>
+              existing.code.toLowerCase() === incoming.code.toLowerCase()
+          );
+          if (idx >= 0) {
+            mergedShipments[idx] = { ...incoming, id: mergedShipments[idx].id };
+          } else {
+            mergedShipments.push(incoming);
+          }
+        });
+
+        const mergedFuel = [...parsed.fuelPurchases, ...f.fuelPurchases];
+
+        return {
+          ...f,
+          trucks: mergedTrucks,
+          ltlTrucks: mergedLtlTrucks,
+          drivers: rerankDrivers(mergedDrivers),
+          shipments: mergedShipments,
+          fuelPurchases: mergedFuel,
+        };
+      });
+    },
+    onClearAllInstanceFleet: () => {
+      updateSpecificInstanceFleet(targetId, () => ({
+        trucks: [],
+        ltlTrucks: [],
+        shipments: [],
+        drivers: [],
+        fuelPurchases: [],
+        alerts: [],
       }));
     },
   });
@@ -925,6 +1039,11 @@ export default function MoroccoFleetDashboard() {
         onAddEditInstanceDriver={builderHandlers.onAddDriver}
         onUpdateEditInstanceDriver={builderHandlers.onUpdateDriver}
         onDeleteEditInstanceDriver={builderHandlers.onDeleteDriver}
+        onAddEditInstanceShipment={builderHandlers.onAddShipment}
+        onUpdateEditInstanceShipment={builderHandlers.onUpdateShipment}
+        onDeleteEditInstanceShipment={builderHandlers.onDeleteShipment}
+        onBulkImportEditInstanceExcel={builderHandlers.onBulkImportExcel}
+        onClearEditInstanceFleet={builderHandlers.onClearAllInstanceFleet}
         syncState={syncState}
         onForceCloudSync={handleForceCloudSync}
         onLockToPortalGate={() => setSessionRole("gate")}
@@ -1448,6 +1567,15 @@ export default function MoroccoFleetDashboard() {
                       onAddDriver={clientHandlers.onAddDriver}
                       onUpdateDriver={clientHandlers.onUpdateDriver}
                       onDeleteDriver={clientHandlers.onDeleteDriver}
+                      shipments={clientFleet.shipments}
+                      onAddShipment={clientHandlers.onAddShipment}
+                      onUpdateShipment={clientHandlers.onUpdateShipment}
+                      onDeleteShipment={clientHandlers.onDeleteShipment}
+                      onBulkImportExcel={clientHandlers.onBulkImportExcel}
+                      onClearAllInstanceFleet={
+                        clientHandlers.onClearAllInstanceFleet
+                      }
+                      instanceSlug={activeClientDemo.slug}
                     />
                   )}
                 </motion.div>

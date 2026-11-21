@@ -62,6 +62,7 @@ export function DriverEcoPage({ locale, t, fuelPriceMad, drivers }: DriverEcoPag
   }, [drivers, badgeFilter, searchQuery, locale, sortKey, sortAsc]);
 
   const fleetAvgFuel = useMemo(() => {
+    if (drivers.length === 0) return "0.0";
     const sum = drivers.reduce((acc, d) => acc + d.fuelEfficiencyL100km, 0);
     return (sum / drivers.length).toFixed(1);
   }, [drivers]);

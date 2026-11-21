@@ -1015,9 +1015,14 @@ export function LiveMapPage({
                 </span>
               </div>
               <span className="font-mono text-[11px] text-slate-600 dark:text-zinc-400">
-                {selectedTruck.code}: {selectedTruck.lat.toFixed(4)}° N,{" "}
-                {Math.abs(selectedTruck.lng).toFixed(4)}° W •{" "}
-                {selectedTruck.remainingDistanceKm ?? routeMetrics.distanceKm} km rem.
+                {selectedTruck
+                  ? `${selectedTruck.code}: ${selectedTruck.lat.toFixed(
+                      4
+                    )}° N, ${Math.abs(selectedTruck.lng).toFixed(4)}° W • ${
+                      selectedTruck.remainingDistanceKm ??
+                      routeMetrics.distanceKm
+                    } km rem.`
+                  : "0 Active Trucks — Add trucks manually or import Excel (.xlsx) in Fleet Manager"}
               </span>
             </div>
           </div>
