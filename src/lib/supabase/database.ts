@@ -167,6 +167,15 @@ export const DEFAULT_BRAND_THEME: BrandThemeConfig = {
   brandTagline: "Enterprise Fleet & LTL Control",
 };
 
+export interface InstanceFleetData {
+  trucks: MapTruck[];
+  ltlTrucks: LtlTruck[];
+  shipments: LtlShipment[];
+  drivers: DriverEcoRecord[];
+  fuelPurchases: FuelPurchaseRecord[];
+  alerts: TelemetryAlert[];
+}
+
 export interface ClientDemoInstance {
   id: string;
   slug: string;
@@ -187,6 +196,7 @@ export interface ClientDemoInstance {
   contactCtaUrl: string;
   notesForClient: string;
   createdAt: string;
+  fleetData?: InstanceFleetData;
 }
 
 export const INITIAL_DEMO_INSTANCES: ClientDemoInstance[] = [
