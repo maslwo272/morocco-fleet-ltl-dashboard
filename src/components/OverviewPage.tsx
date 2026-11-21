@@ -15,6 +15,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import {
+  ClientDemoTabId,
   CompanyProfile,
   DailyFinancialPoint,
   Locale,
@@ -33,9 +34,7 @@ interface OverviewPageProps {
   alerts: TelemetryAlert[];
   fleetUtilizationPct: number;
   backhaulSavedMad: number;
-  onNavigateTab: (
-    tab: "overview" | "live-map" | "ltl-optimizer" | "driver-eco" | "fleet-manager"
-  ) => void;
+  onNavigateTab: (tab: ClientDemoTabId) => void;
 }
 
 export function OverviewPage({
@@ -55,18 +54,21 @@ export function OverviewPage({
   const [showRevenue, setShowRevenue] = useState(true);
   const [showFuelSpend, setShowFuelSpend] = useState(true);
 
-  // Dynamically scale financials based on current fuelPriceMad
+  // Dynamically scale financials based on current fuelPriceMad (100% real data, 0 when empty)
   const visibleFinancials = useMemo(() => {
     return financials.slice(financials.length - rangeDays).map((d) => ({
       ...d,
-      fuelSpendMad: Math.round(d.fuelLiters * fuelPriceMad),
-      wastedIdleMad: Math.round((d.wastedIdleMad / 15.9) * fuelPriceMad),
+      fuelSpendMad: d.fuelSpendMad || Math.round(d.fuelLiters * fuelPriceMad),
+      wastedIdleMad: d.wastedIdleMad || 0,
     }));
   }, [financials, rangeDays, fuelPriceMad]);
 
   const liveIdlingLiters = useMemo(() => {
-    const truckLiters = mapTrucks.reduce((acc, trk) => acc + trk.wastedFuelLiters, 0);
-    return Math.round((168.5 + truckLiters) * 10) / 10;
+    const truckLiters = mapTrucks.reduce(
+      (acc, trk) => acc + (trk.wastedFuelLiters || 0),
+      0
+    );
+    return Math.round(truckLiters * 10) / 10;
   }, [mapTrucks]);
 
   const todaysWastedMad = useMemo(() => {
@@ -87,9 +89,13 @@ export function OverviewPage({
     return { rev, fuel, liters: Math.round(liters), ratio };
   }, [visibleFinancials]);
 
-  // Adjust active trucks count if user added/removed trucks in Fleet Manager
-  const activeTrucksDisplay = company.activeTrucksCount + (mapTrucks.length - 9);
-  const totalFleetDisplay = Math.max(activeTrucksDisplay, company.totalFleetCount + (mapTrucks.length - 9));
+  // 100% Real Truck Counts from Instance Data
+  const activeTrucksDisplay = mapTrucks.length;
+  const totalFleetDisplay = Math.max(activeTrucksDisplay, company.totalFleetCount || 0);
+  const activeFleetRatioPct =
+    totalFleetDisplay > 0
+      ? Math.round((activeTrucksDisplay / totalFleetDisplay) * 100)
+      : 0;
 
   // SVG Chart geometry
   const chartW = 860;
@@ -101,8 +107,16 @@ export function OverviewPage({
   const plotW = chartW - padL - padR;
   const plotH = chartH - padT - padB;
 
-  const maxY = 240000;
-  const minY = 20000;
+  const maxDataVal = useMemo(() => {
+    const highest = Math.max(
+      ...visibleFinancials.map((d) => Math.max(d.revenueMad, d.fuelSpendMad)),
+      0
+    );
+    return highest > 0 ? Math.ceil(highest * 1.2) : 100000;
+  }, [visibleFinancials]);
+
+  const maxY = maxDataVal;
+  const minY = 0;
 
   const getX = (idx: number) => {
     if (visibleFinancials.length <= 1) return padL;
@@ -111,7 +125,7 @@ export function OverviewPage({
 
   const getY = (val: number) => {
     const clamped = Math.max(minY, Math.min(maxY, val));
-    return padT + plotH - ((clamped - minY) / (maxY - minY)) * plotH;
+    return padT + plotH - ((clamped - minY) / Math.max(1, maxY - minY)) * plotH;
   };
 
   const revenuePoints = visibleFinancials
@@ -134,57 +148,144 @@ export function OverviewPage({
       : visibleFinancials[visibleFinancials.length - 1];
   const activePointIdx = hoverIdx !== null ? hoverIdx : visibleFinancials.length - 1;
 
-  const corridors = [
-    {
-      code: "A7",
-      name: {
-        en: "Casablanca ↔ Marrakech ↔ Agadir",
-        fr: "Casablanca ↔ Marrakech ↔ Agadir",
-        ar: "الدار البيضاء ↔ مراكش ↔ أكادير",
+  const corridors = useMemo(() => {
+    const defs = [
+      {
+        code: "A7",
+        match: ["A7"],
+        name: {
+          en: "Casablanca ↔ Marrakech ↔ Agadir",
+          fr: "Casablanca ↔ Marrakech ↔ Agadir",
+          ar: "الدار البيضاء ↔ مراكش ↔ أكادير",
+        },
       },
-      trucks: 14,
-      utilization: 88,
-      fuelEfficiency: "25.9 L/100km",
-    },
-    {
-      code: "N1 Express",
-      name: {
-        en: "Agadir ↔ Laâyoune ↔ Dakhla ↔ El Guerguerat",
-        fr: "Agadir ↔ Laâyoune ↔ Dakhla ↔ El Guerguerat",
-        ar: "أكادير ↔ العيون ↔ الداخلة ↔ الكركرات",
+      {
+        code: "N1 Express",
+        match: ["N1"],
+        name: {
+          en: "Agadir ↔ Laâyoune ↔ Dakhla ↔ El Guerguerat",
+          fr: "Agadir ↔ Laâyoune ↔ Dakhla ↔ El Guerguerat",
+          ar: "أكادير ↔ العيون ↔ الداخلة ↔ الكركرات",
+        },
       },
-      trucks: 10,
-      utilization: 91,
-      fuelEfficiency: "25.1 L/100km",
-    },
-    {
-      code: "A1",
-      name: {
-        en: "Tanger Med Port ↔ Kenitra ↔ Rabat",
-        fr: "Port Tanger Med ↔ Kénitra ↔ Rabat",
-        ar: "ميناء طنجة المتوسط ↔ القنيطرة ↔ الرباط",
+      {
+        code: "A1",
+        match: ["A1"],
+        name: {
+          en: "Tanger Med Port ↔ Kenitra ↔ Rabat",
+          fr: "Port Tanger Med ↔ Kénitra ↔ Rabat",
+          ar: "ميناء طنجة المتوسط ↔ القنيطرة ↔ الرباط",
+        },
       },
-      trucks: 12,
-      utilization: 84,
-      fuelEfficiency: "26.8 L/100km",
-    },
-    {
-      code: "A2 / A3",
-      name: {
-        en: "Casablanca ↔ Rabat ↔ Fès ↔ Oujda",
-        fr: "Casablanca ↔ Rabat ↔ Fès ↔ Oujda",
-        ar: "الدار البيضاء ↔ الرباط ↔ فاس ↔ وجدة",
+      {
+        code: "A2 / A3",
+        match: ["A2", "A3", "A5"],
+        name: {
+          en: "Casablanca ↔ Rabat ↔ Fès ↔ Oujda",
+          fr: "Casablanca ↔ Rabat ↔ Fès ↔ Oujda",
+          ar: "الدار البيضاء ↔ الرباط ↔ فاس ↔ وجدة",
+        },
       },
-      trucks: 8,
-      utilization: 79,
-      fuelEfficiency: "27.5 L/100km",
-    },
-  ];
+    ];
+
+    return defs.map((def) => {
+      const matchingTrucks = mapTrucks.filter((trk) =>
+        def.match.some((m) => (trk.corridor || "").toUpperCase().includes(m))
+      );
+      const count = matchingTrucks.length;
+      const avgUtil =
+        count > 0
+          ? Math.round(
+              matchingTrucks.reduce(
+                (s, t) => s + (t.cargoUtilizationPct || 0),
+                0
+              ) / count
+            )
+          : 0;
+      const avgEff =
+        count > 0
+          ? (
+              matchingTrucks.reduce(
+                (s, t) => s + (t.targetConsumptionL100km || 29.0),
+                0
+              ) / count
+            ).toFixed(1)
+          : "0.0";
+      return {
+        code: def.code,
+        name: def.name,
+        trucks: count,
+        utilization: avgUtil,
+        fuelEfficiency: `${avgEff} L/100km`,
+      };
+    });
+  }, [mapTrucks]);
 
   const cleanAlertText = (raw: string) => raw.replace(/^[⚠️🚨🔄✅]+\s*/u, "");
 
   return (
     <div className="space-y-6">
+      {/* Guided Step-by-Step Instance Setup Bar when Instance starts at 0 records */}
+      {mapTrucks.length === 0 && (
+        <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-5 shadow-md">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="space-y-1">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-0.5 text-[11px] font-mono font-bold uppercase tracking-wider">
+                Clean Real Client Instance • 0 Random Demo Data
+              </span>
+              <h2 className="text-base sm:text-lg font-bold">
+                Welcome to {company.name[locale]} — Walkthrough Setup Checklist
+              </h2>
+              <p className="text-xs text-blue-100 max-w-2xl">
+                This instance starts at 0 so you and Ibrahim can configure real company branding, trucks, driver profiles, routes, tasks, and gas purchases.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => onNavigateTab("company-branding")}
+                className="rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 px-3.5 py-2.5 text-start transition-all"
+              >
+                <span className="block text-[10px] font-mono text-blue-200">
+                  STEP 1
+                </span>
+                <span>Logo, Header & Footer →</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigateTab("fleet-manager")}
+                className="rounded-xl bg-white text-slate-900 hover:bg-blue-50 px-3.5 py-2.5 text-start shadow-sm transition-all"
+              >
+                <span className="block text-[10px] font-mono text-blue-600">
+                  STEP 2
+                </span>
+                <span>Add Trucks & Presets →</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigateTab("fleet-manager")}
+                className="rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 px-3.5 py-2.5 text-start transition-all"
+              >
+                <span className="block text-[10px] font-mono text-blue-200">
+                  STEP 3
+                </span>
+                <span>Add Driver Profiles →</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigateTab("tasks")}
+                className="rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 px-3.5 py-2.5 text-start transition-all"
+              >
+                <span className="block text-[10px] font-mono text-blue-200">
+                  STEP 4
+                </span>
+                <span>Add Tasks & Fuel →</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top KPI Ribbon (4 Executive Institutional Cards) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* KPI 1: Total Active Trucks */}
@@ -208,7 +309,7 @@ export function OverviewPage({
                   / {totalFleetDisplay}
                 </span>
                 <span className="ms-1 inline-flex items-center rounded-md bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
-                  {Math.round((activeTrucksDisplay / totalFleetDisplay) * 100)}%
+                  {activeFleetRatioPct}%
                 </span>
               </div>
             </div>
@@ -221,9 +322,7 @@ export function OverviewPage({
               <div
                 className="h-full rounded-full bg-blue-600 dark:bg-blue-500 transition-all duration-500"
                 style={{
-                  width: `${Math.round(
-                    (activeTrucksDisplay / totalFleetDisplay) * 100
-                  )}%`,
+                  width: `${activeFleetRatioPct}%`,
                 }}
               />
             </div>

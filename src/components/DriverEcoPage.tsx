@@ -12,6 +12,11 @@ import {
   Trophy,
   Flame,
   GraduationCap,
+  UserCheck,
+  X,
+  Save,
+  Phone,
+  CreditCard,
 } from "lucide-react";
 import { DriverEcoRecord, Locale } from "@/lib/supabase/database";
 import { TranslationDictionary } from "@/lib/i18n/translations";
@@ -21,16 +26,29 @@ interface DriverEcoPageProps {
   t: TranslationDictionary;
   fuelPriceMad: number;
   drivers: DriverEcoRecord[];
+  onUpdateDriver?: (updated: DriverEcoRecord) => void;
+  onExplicitSaveToCloud?: () => Promise<void> | void;
 }
 
 type SortKey = "ecoScore" | "fuelEfficiencyL100km" | "totalIdleMinutes30d" | "safetyIncidents30d";
 
-export function DriverEcoPage({ locale, t, fuelPriceMad, drivers }: DriverEcoPageProps) {
+export function DriverEcoPage({
+  locale,
+  t,
+  fuelPriceMad,
+  drivers,
+  onUpdateDriver,
+  onExplicitSaveToCloud,
+}: DriverEcoPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [badgeFilter, setBadgeFilter] = useState<"all" | "green" | "yellow" | "red">("all");
   const [sortKey, setSortKey] = useState<SortKey>("ecoScore");
   const [sortAsc, setSortAsc] = useState<boolean>(false);
   const [actionTaken, setActionTaken] = useState<Record<string, string>>({});
+  const [editingProfile, setEditingProfile] = useState<DriverEcoRecord | null>(
+    null
+  );
+  const [profileSavedMsg, setProfileSavedMsg] = useState<string | null>(null);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -400,40 +418,55 @@ export function DriverEcoPage({ locale, t, fuelPriceMad, drivers }: DriverEcoPag
                       )}
                     </td>
 
-                    {/* Interactive Coaching / Eco Bonus Action */}
+                    {/* Interactive Profile Editor + Coaching / Eco Bonus Action */}
                     <td className="py-3.5 px-3 text-end">
-                      {actionTaken[drv.id] ? (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
-                          {actionTaken[drv.id]}
-                        </span>
-                      ) : drv.badge === "green" ? (
+                      <div className="inline-flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() =>
-                            setActionTaken((prev) => ({
-                              ...prev,
-                              [drv.id]: t.eco.bonusSentMsg,
-                            }))
+                            setEditingProfile(
+                              JSON.parse(JSON.stringify(drv))
+                            )
                           }
-                          className="inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-zinc-200 transition-colors"
+                          className="inline-flex items-center gap-1 rounded-md bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-2.5 py-1.5 text-xs font-bold text-blue-700 dark:text-blue-300 transition-colors"
                         >
-                          {t.eco.sendEcoBonusBtn}
+                          <UserCheck className="h-3.5 w-3.5" />
+                          <span>Full Profile</span>
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setActionTaken((prev) => ({
-                              ...prev,
-                              [drv.id]: t.eco.coachingScheduledMsg,
-                            }))
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-zinc-200 transition-colors"
-                        >
-                          <GraduationCap className="h-3.5 w-3.5" />
-                          {t.eco.scheduleCoachingBtn}
-                        </button>
-                      )}
+
+                        {actionTaken[drv.id] ? (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                            {actionTaken[drv.id]}
+                          </span>
+                        ) : drv.badge === "green" ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActionTaken((prev) => ({
+                                ...prev,
+                                [drv.id]: t.eco.bonusSentMsg,
+                              }))
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-zinc-200 transition-colors"
+                          >
+                            {t.eco.sendEcoBonusBtn}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActionTaken((prev) => ({
+                                ...prev,
+                                [drv.id]: t.eco.coachingScheduledMsg,
+                              }))
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-700 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-zinc-200 transition-colors"
+                          >
+                            <GraduationCap className="h-3.5 w-3.5" />
+                            {t.eco.scheduleCoachingBtn}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -442,6 +475,423 @@ export function DriverEcoPage({ locale, t, fuelPriceMad, drivers }: DriverEcoPag
           </table>
         </div>
       </motion.div>
+
+      {/* Editable Full Driver Profile Modal */}
+      {editingProfile && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between bg-slate-50 dark:bg-zinc-950">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-blue-600 text-white font-mono font-bold flex items-center justify-center">
+                  {editingProfile.avatarInitials}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+                    Editable Driver Profile — {editingProfile.name[locale]}
+                  </h3>
+                  <p className="text-[11px] font-mono text-slate-500">
+                    {editingProfile.driverCode} • Assigned to{" "}
+                    {editingProfile.truckCode}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingProfile(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (onUpdateDriver) {
+                  const score = Math.min(
+                    100,
+                    Math.max(10, Number(editingProfile.ecoScore) || 85)
+                  );
+                  const badge: "green" | "yellow" | "red" =
+                    score >= 80 ? "green" : score >= 65 ? "yellow" : "red";
+                  onUpdateDriver({
+                    ...editingProfile,
+                    ecoScore: score,
+                    badge,
+                  });
+                }
+                if (onExplicitSaveToCloud) {
+                  await onExplicitSaveToCloud();
+                }
+                setProfileSavedMsg(
+                  `Driver profile for "${editingProfile.name.en}" saved to Supabase!`
+                );
+                setTimeout(() => setProfileSavedMsg(null), 4000);
+                setEditingProfile(null);
+              }}
+              className="p-5 space-y-4 max-h-[80vh] overflow-y-auto text-xs"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingProfile.name.en}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        name: {
+                          en: e.target.value,
+                          fr: e.target.value,
+                          ar: editingProfile.name.ar || e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Employee Code
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProfile.driverCode}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        driverCode: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Moroccan CIN (ID)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="BK482910"
+                    value={editingProfile.cinNumber || ""}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        cinNumber: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Phone / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="+212 6 61 00 00 00"
+                    value={editingProfile.phone || ""}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        phone: e.target.value,
+                        whatsapp: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    License Category
+                  </label>
+                  <select
+                    value={
+                      editingProfile.licenseCategory ||
+                      "EC (Super Lourd 40T-44T)"
+                    }
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        licenseCategory: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2"
+                  >
+                    <option value="EC (Super Lourd 40T-44T)">
+                      EC (Super Lourd 40T-44T)
+                    </option>
+                    <option value="C (Poids Lourd 19T)">
+                      C (Poids Lourd 19T)
+                    </option>
+                    <option value="C + ADR (Hazardous)">
+                      C + ADR (Hazardous)
+                    </option>
+                    <option value="B / Light Commercial">
+                      B / Light Commercial
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    License Number
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProfile.licenseNumber || ""}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        licenseNumber: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1">
+                    License Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editingProfile.licenseExpiry || "2028-09-15"}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        licenseExpiry: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Medical Certificate Expiry
+                  </label>
+                  <input
+                    type="date"
+                    value={editingProfile.medicalExpiry || "2027-03-15"}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        medicalExpiry: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Driver Status
+                  </label>
+                  <select
+                    value={editingProfile.status || "active"}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        status: e.target.value as any,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2"
+                  >
+                    <option value="active">Active</option>
+                    <option value="on_trip">On Trip</option>
+                    <option value="on_leave">On Leave</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Assigned Truck
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProfile.truckCode}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        truckCode: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Base Salary (MAD)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingProfile.baseSalaryMad ?? 7500}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        baseSalaryMad: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Eco Bonus (MAD)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingProfile.bonusMad ?? 1500}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        bonusMad: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Fuel Card Code
+                  </label>
+                  <input
+                    type="text"
+                    value={editingProfile.fuelCardCode || ""}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        fuelCardCode: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block font-semibold mb-1">
+                    L/100km Avg
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={editingProfile.fuelEfficiencyL100km}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        fuelEfficiencyL100km: parseFloat(e.target.value) || 28,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Idle Mins (30d)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingProfile.totalIdleMinutes30d}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        totalIdleMinutes30d: parseInt(e.target.value, 10) || 0,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Km Driven (30d)
+                  </label>
+                  <input
+                    type="number"
+                    value={editingProfile.kmDriven30d}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        kmDriven30d: parseInt(e.target.value, 10) || 0,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">
+                    Eco Score (0-100)
+                  </label>
+                  <input
+                    type="number"
+                    min="10"
+                    max="100"
+                    value={editingProfile.ecoScore}
+                    onChange={(e) =>
+                      setEditingProfile({
+                        ...editingProfile,
+                        ecoScore: parseInt(e.target.value, 10) || 85,
+                      })
+                    }
+                    className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold mb-1">
+                  Driver Notes & Certifications
+                </label>
+                <textarea
+                  rows={2}
+                  value={editingProfile.notes || ""}
+                  onChange={(e) =>
+                    setEditingProfile({
+                      ...editingProfile,
+                      notes: e.target.value,
+                    })
+                  }
+                  placeholder="Notes, certifications, training history, emergency contact..."
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-200 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingProfile(null)}
+                  className="rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-zinc-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 text-xs font-bold shadow-sm"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  <span>Save Driver Profile to Supabase</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {profileSavedMsg && (
+        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 p-3 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+          ✓ {profileSavedMsg}
+        </div>
+      )}
     </div>
   );
 }

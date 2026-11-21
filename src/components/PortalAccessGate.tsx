@@ -42,15 +42,20 @@ export function PortalAccessGate({
   onUnlockAdmin,
   onUnlockClientDemo,
 }: PortalAccessGateProps) {
-  const [gateMode, setGateMode] = useState<"client" | "admin">("client");
+  const [gateMode, setGateMode] = useState<"client" | "admin">(() =>
+    demoInstances.length === 0 ? "admin" : "client"
+  );
   const [selectedSlug, setSelectedSlug] = useState<string>(
-    initialSlugFromUrl || demoInstances[0]?.slug || "sdtm-maroc"
+    initialSlugFromUrl || demoInstances[0]?.slug || ""
   );
   const [pinInput, setPinInput] = useState<string>("");
   const [adminPasswordInput, setAdminPasswordInput] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    if (demoInstances.length > 0 && !selectedSlug) {
+      setSelectedSlug(demoInstances[0].slug);
+    }
     if (initialSlugFromUrl) {
       const exists = demoInstances.find(
         (d) => d.slug.toLowerCase() === initialSlugFromUrl.toLowerCase()
@@ -60,7 +65,7 @@ export function PortalAccessGate({
         setGateMode("client");
       }
     }
-  }, [initialSlugFromUrl, demoInstances]);
+  }, [initialSlugFromUrl, demoInstances, selectedSlug]);
 
   const activeDemo =
     demoInstances.find((d) => d.slug === selectedSlug) || demoInstances[0];
@@ -311,6 +316,25 @@ export function PortalAccessGate({
                 )}
 
                 {gateMode === "client" ? (
+                  demoInstances.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-300 dark:border-zinc-800 p-8 text-center space-y-3">
+                      <Building2 className="h-9 w-9 text-blue-600 mx-auto" />
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">
+                        0 Client Instances Configured Yet
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 max-w-sm mx-auto">
+                        The platform has been reset to 0 with no random demo data. Sign in to {adminOwnerName}&apos;s Master Admin Portal to create your first real client instance.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setGateMode("admin")}
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-xs font-bold shadow-sm"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        <span>Open {adminOwnerName} Admin Portal Login →</span>
+                      </button>
+                    </div>
+                  ) : (
                   <form onSubmit={handleClientLogin} className="space-y-4">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 dark:text-zinc-300 mb-1.5">
@@ -337,14 +361,22 @@ export function PortalAccessGate({
                               }`}
                             >
                               <div className="flex items-center gap-3">
-                                <span
-                                  className="h-8 w-8 rounded-lg flex items-center justify-center text-white font-mono font-bold text-xs shrink-0"
-                                  style={{
-                                    backgroundColor: inst.themeConfig.primaryHex,
-                                  }}
-                                >
-                                  {inst.themeConfig.brandMonogram}
-                                </span>
+                                {inst.themeConfig.logoDataUrl ? (
+                                  <img
+                                    src={inst.themeConfig.logoDataUrl}
+                                    alt={inst.clientName[locale]}
+                                    className="h-8 w-8 rounded-lg object-contain bg-white border border-slate-200 p-0.5 shrink-0"
+                                  />
+                                ) : (
+                                  <span
+                                    className="h-8 w-8 rounded-lg flex items-center justify-center text-white font-mono font-bold text-xs shrink-0"
+                                    style={{
+                                      backgroundColor: inst.themeConfig.primaryHex,
+                                    }}
+                                  >
+                                    {inst.themeConfig.brandMonogram}
+                                  </span>
+                                )}
                                 <div>
                                   <span className="text-xs font-bold text-slate-900 dark:text-zinc-100 block">
                                     {inst.clientName[locale]}
@@ -429,6 +461,7 @@ export function PortalAccessGate({
                       <ArrowRight className="h-4 w-4" />
                     </button>
                   </form>
+                  )
                 ) : (
                   <form onSubmit={handleAdminLogin} className="space-y-4">
                     <div className="rounded-xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 p-4 text-xs text-slate-600 dark:text-zinc-400 space-y-1.5">

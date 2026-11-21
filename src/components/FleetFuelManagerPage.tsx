@@ -31,7 +31,9 @@ import {
   LtlShipment,
   MapTruck,
   MOROCCO_CITY_COORDS,
+  TRAILER_CAPACITY_PRESETS,
   TrailerType,
+  TRUCK_BRAND_PRESETS,
 } from "@/lib/supabase/database";
 import {
   downloadFleetExcelTemplate,
@@ -260,6 +262,9 @@ export function FleetFuelManagerPage({
   const [editingTruckId, setEditingTruckId] = useState<string | null>(null);
   const [trkCode, setTrkCode] = useState("Truck 101");
   const [trkPlate, setTrkPlate] = useState("94510-A-1");
+  const [trkSelectedBrand, setTrkSelectedBrand] = useState("Volvo Trucks");
+  const [trkSelectedCapacityPreset, setTrkSelectedCapacityPreset] =
+    useState("semi-tautliner");
   const [trkModel, setTrkModel] = useState("Volvo FH 500 Globetrotter");
   const [trkTrailerType, setTrkTrailerType] =
     useState<TrailerType>("Tautliner 13.6m");
@@ -282,6 +287,34 @@ export function FleetFuelManagerPage({
   const [trkTankCapacity, setTrkTankCapacity] = useState("850");
   const [trkFuelLevelPct, setTrkFuelLevelPct] = useState("78");
   const [trkTargetL100, setTrkTargetL100] = useState("28.5");
+  const [trkInsuranceExpiry, setTrkInsuranceExpiry] = useState("2027-06-30");
+  const [trkVisiteExpiry, setTrkVisiteExpiry] = useState("2027-05-15");
+
+  const handleApplyCapacityPreset = (presetId: string) => {
+    setTrkSelectedCapacityPreset(presetId);
+    const found = TRAILER_CAPACITY_PRESETS.find((p) => p.id === presetId);
+    if (!found) return;
+    setTrkTrailerType(found.trailerType);
+    setTrkAxleConfig(found.axleConfig);
+    setTrkMaxVolume(String(found.maxVolumeM3));
+    setTrkLoadedVolume(String(Math.round(found.maxVolumeM3 * 0.75 * 10) / 10));
+    setTrkMaxWeight(String(found.maxWeightKg));
+    setTrkLoadedWeight(String(Math.round(found.maxWeightKg * 0.75)));
+    setTrkMaxPallets(String(found.maxPallets));
+    setTrkLoadedPallets(String(Math.round(found.maxPallets * 0.75)));
+    setTrkTankCapacity(String(found.fuelTankCapacityL));
+    setTrkTargetL100(String(found.targetConsumptionL100km));
+  };
+
+  const handleApplyBrandPreset = (brandName: string) => {
+    setTrkSelectedBrand(brandName);
+    const found = TRUCK_BRAND_PRESETS.find((b) => b.brand === brandName);
+    if (found && found.models[0]) {
+      setTrkModel(found.models[0]);
+      setTrkTankCapacity(String(found.defaultTankL));
+      setTrkTargetL100(String(found.defaultL100km));
+    }
+  };
 
   const trkRoutePreview = useMemo(() => {
     return calculateMoroccoRoute(
@@ -317,6 +350,8 @@ export function FleetFuelManagerPage({
     setTrkTankCapacity(String(trk.fuelTankCapacityL ?? 850));
     setTrkFuelLevelPct(String(trk.fuelLevelPct ?? 75));
     setTrkTargetL100(String(trk.targetConsumptionL100km ?? 28.5));
+    setTrkInsuranceExpiry(trk.insuranceExpiry || "2027-06-30");
+    setTrkVisiteExpiry(trk.visiteTechniqueExpiry || "2027-05-15");
   };
 
   const handleResetTruckForm = () => {
@@ -340,6 +375,8 @@ export function FleetFuelManagerPage({
     setTrkTankCapacity("850");
     setTrkFuelLevelPct("78");
     setTrkTargetL100("28.5");
+    setTrkInsuranceExpiry("2027-06-30");
+    setTrkVisiteExpiry("2027-05-15");
   };
 
   const handleSubmitTruck = (e: React.FormEvent) => {
@@ -373,12 +410,12 @@ export function FleetFuelManagerPage({
       Math.max(0, Math.round(Math.max(volRatio, weightRatio, palRatio)))
     );
 
-    const tankCap = Math.max(150, parseInt(trkTankCapacity, 10) || 850);
+    const tankCap = Math.max(80, parseInt(trkTankCapacity, 10) || 850);
     const fuelLvl = Math.min(
       100,
       Math.max(5, parseInt(trkFuelLevelPct, 10) || 75)
     );
-    const targetCons = Math.max(14, parseFloat(trkTargetL100) || 28.5);
+    const targetCons = Math.max(10, parseFloat(trkTargetL100) || 28.5);
 
     const isIdling = trkStatus === "idling";
     const wastedLiters = isIdling ? 3.5 : 0.4;
@@ -423,6 +460,8 @@ export function FleetFuelManagerPage({
           targetConsumptionL100km: targetCons,
           routeDistanceKm: trkRoutePreview.distanceKm,
           remainingDistanceKm: trkRoutePreview.distanceKm,
+          insuranceExpiry: trkInsuranceExpiry,
+          visiteTechniqueExpiry: trkVisiteExpiry,
           temperatureC:
             trkTrailerType === "Reefer (Frigo ATP)" ? 3.5 : undefined,
         });
@@ -467,6 +506,8 @@ export function FleetFuelManagerPage({
         targetConsumptionL100km: targetCons,
         routeDistanceKm: trkRoutePreview.distanceKm,
         remainingDistanceKm: trkRoutePreview.distanceKm,
+        insuranceExpiry: trkInsuranceExpiry,
+        visiteTechniqueExpiry: trkVisiteExpiry,
         temperatureC: trkTrailerType === "Reefer (Frigo ATP)" ? 3.5 : undefined,
       };
       onAddTruck(newTruck);
@@ -475,10 +516,26 @@ export function FleetFuelManagerPage({
     handleResetTruckForm();
   };
 
-  // --- 4. Drivers Directory CRUD State ---
+  // --- 4. Drivers Directory & Full Driver Profile CRUD State ---
   const [editingDriverId, setEditingDriverId] = useState<string | null>(null);
+  const [profileModalDriver, setProfileModalDriver] =
+    useState<DriverEcoRecord | null>(null);
   const [drvName, setDrvName] = useState("Amine Lahlou");
   const [drvCode, setDrvCode] = useState("DRV-101");
+  const [drvCin, setDrvCin] = useState("BK482910");
+  const [drvPhone, setDrvPhone] = useState("+212 6 61 00 00 00");
+  const [drvLicenseNo, setDrvLicenseNo] = useState("MA-EC-88291");
+  const [drvLicenseCat, setDrvLicenseCat] = useState("EC (Super Lourd 40T-44T)");
+  const [drvLicenseExpiry, setDrvLicenseExpiry] = useState("2028-09-15");
+  const [drvMedicalExpiry, setDrvMedicalExpiry] = useState("2027-03-15");
+  const [drvStatus, setDrvStatus] = useState<
+    "active" | "on_trip" | "on_leave" | "suspended"
+  >("active");
+  const [drvSalaryMad, setDrvSalaryMad] = useState("7500");
+  const [drvBonusMad, setDrvBonusMad] = useState("1500");
+  const [drvFuelCard, setDrvFuelCard] = useState("AFRIQUIA-PRO-441");
+  const [drvKmDriven, setDrvKmDriven] = useState("9650");
+  const [drvNotes, setDrvNotes] = useState("");
   const [drvTruckCode, setDrvTruckCode] = useState(
     trucks[0]?.code || "Truck 101"
   );
@@ -492,6 +549,18 @@ export function FleetFuelManagerPage({
     setEditingDriverId(drv.id);
     setDrvName(drv.name[locale]);
     setDrvCode(drv.driverCode);
+    setDrvCin(drv.cinNumber || "BK482910");
+    setDrvPhone(drv.phone || "+212 6 61 00 00 00");
+    setDrvLicenseNo(drv.licenseNumber || "MA-EC-88291");
+    setDrvLicenseCat(drv.licenseCategory || "EC (Super Lourd 40T-44T)");
+    setDrvLicenseExpiry(drv.licenseExpiry || "2028-09-15");
+    setDrvMedicalExpiry(drv.medicalExpiry || "2027-03-15");
+    setDrvStatus(drv.status || "active");
+    setDrvSalaryMad(String(drv.baseSalaryMad ?? 7500));
+    setDrvBonusMad(String(drv.bonusMad ?? 1500));
+    setDrvFuelCard(drv.fuelCardCode || "AFRIQUIA-PRO-441");
+    setDrvKmDriven(String(drv.kmDriven30d ?? 9650));
+    setDrvNotes(drv.notes || "");
     setDrvTruckCode(drv.truckCode);
     setDrvCorridor(drv.corridor);
     setDrvEfficiency(String(drv.fuelEfficiencyL100km));
@@ -504,6 +573,18 @@ export function FleetFuelManagerPage({
     setEditingDriverId(null);
     setDrvName("Amine Lahlou");
     setDrvCode(`DRV-${101 + drivers.length}`);
+    setDrvCin("BK482910");
+    setDrvPhone("+212 6 61 00 00 00");
+    setDrvLicenseNo("MA-EC-88291");
+    setDrvLicenseCat("EC (Super Lourd 40T-44T)");
+    setDrvLicenseExpiry("2028-09-15");
+    setDrvMedicalExpiry("2027-03-15");
+    setDrvStatus("active");
+    setDrvSalaryMad("7500");
+    setDrvBonusMad("1500");
+    setDrvFuelCard("AFRIQUIA-PRO-441");
+    setDrvKmDriven("9650");
+    setDrvNotes("");
     setDrvEfficiency("25.8");
     setDrvIdleMins("90");
     setDrvIncidents("0");
@@ -512,7 +593,7 @@ export function FleetFuelManagerPage({
 
   const handleSubmitDriver = (e: React.FormEvent) => {
     e.preventDefault();
-    const eff = Math.max(15, parseFloat(drvEfficiency) || 26.5);
+    const eff = Math.max(10, parseFloat(drvEfficiency) || 26.5);
     const idleM = Math.max(0, parseInt(drvIdleMins, 10) || 90);
     const inc = Math.max(0, parseInt(drvIncidents, 10) || 0);
     const score = Math.min(100, Math.max(10, parseInt(drvEcoScore, 10) || 85));
@@ -527,6 +608,22 @@ export function FleetFuelManagerPage({
       .join("");
 
     const matchedTruck = trucks.find((x) => x.code === drvTruckCode);
+
+    const profileExtra = {
+      cinNumber: drvCin.trim(),
+      phone: drvPhone.trim(),
+      whatsapp: drvPhone.trim(),
+      licenseNumber: drvLicenseNo.trim(),
+      licenseCategory: drvLicenseCat,
+      licenseExpiry: drvLicenseExpiry,
+      medicalExpiry: drvMedicalExpiry,
+      status: drvStatus,
+      baseSalaryMad: Math.max(0, parseFloat(drvSalaryMad) || 0),
+      bonusMad: Math.max(0, parseFloat(drvBonusMad) || 0),
+      fuelCardCode: drvFuelCard.trim(),
+      kmDriven30d: Math.max(0, parseInt(drvKmDriven, 10) || 0),
+      notes: drvNotes.trim(),
+    };
 
     if (editingDriverId) {
       const existing = drivers.find((d) => d.id === editingDriverId);
@@ -551,8 +648,9 @@ export function FleetFuelManagerPage({
           overspeedCount: Math.floor(inc / 2),
           ecoScore: score,
           badge,
+          ...profileExtra,
         });
-        notifySaved(`✓ Driver ${drvName} updated and saved to Supabase.`);
+        notifySaved(`✓ Driver profile for ${drvName} updated and saved to Supabase.`);
       }
     } else {
       const newDriver: DriverEcoRecord = {
@@ -580,13 +678,14 @@ export function FleetFuelManagerPage({
         safetyIncidents30d: inc,
         harshBrakingCount: Math.ceil(inc / 2),
         overspeedCount: Math.floor(inc / 2),
-        kmDriven30d: 9650,
         ecoScore: score,
         badge,
+        ...profileExtra,
       };
       onAddDriver(newDriver);
       notifySaved(`✓ Driver ${newDriver.name.en} added and saved to Supabase.`);
     }
+    setProfileModalDriver(null);
     handleResetDriverForm();
   };
 
@@ -1099,6 +1198,51 @@ export function FleetFuelManagerPage({
               </div>
             </div>
 
+            {/* 1-Click Standard Brand & Capacity Presets */}
+            <div className="rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-900/50 p-3 space-y-2.5">
+              <span className="text-[11px] font-bold uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <Truck className="h-3.5 w-3.5" />
+                Quick Fill: Standard Truck Brand & Capacity Presets
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
+                    Truck Manufacturer / Brand Preset
+                  </label>
+                  <select
+                    value={trkSelectedBrand}
+                    onChange={(e) => handleApplyBrandPreset(e.target.value)}
+                    className="w-full rounded bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 px-2 py-1.5 text-xs font-semibold"
+                  >
+                    {TRUCK_BRAND_PRESETS.map((b) => (
+                      <option key={b.brand} value={b.brand}>
+                        {b.brand}
+                      </option>
+                    ))}
+                    <option value="Custom">Custom Brand / Model...</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 dark:text-zinc-400 mb-1">
+                    Standard Trailer & Capacity Preset (Auto-fills m³/kg/EPAL)
+                  </label>
+                  <select
+                    value={trkSelectedCapacityPreset}
+                    onChange={(e) => handleApplyCapacityPreset(e.target.value)}
+                    className="w-full rounded bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 px-2 py-1.5 text-xs font-semibold"
+                  >
+                    {TRAILER_CAPACITY_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                    <option value="custom">Custom Manual Capacities...</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-[11px] font-medium text-slate-600 dark:text-zinc-400 mb-1">
@@ -1106,11 +1250,17 @@ export function FleetFuelManagerPage({
                 </label>
                 <input
                   type="text"
+                  list="brand-models-datalist"
                   value={trkModel}
                   onChange={(e) => setTrkModel(e.target.value)}
-                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs"
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs font-semibold"
                   required
                 />
+                <datalist id="brand-models-datalist">
+                  {TRUCK_BRAND_PRESETS.flatMap((b) => b.models).map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-slate-600 dark:text-zinc-400 mb-1">
@@ -1118,11 +1268,17 @@ export function FleetFuelManagerPage({
                 </label>
                 <input
                   type="text"
+                  list="registered-drivers-datalist"
                   value={trkDriverName}
                   onChange={(e) => setTrkDriverName(e.target.value)}
                   className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 text-xs"
                   required
                 />
+                <datalist id="registered-drivers-datalist">
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.name[locale]} />
+                  ))}
+                </datalist>
               </div>
             </div>
 
@@ -1149,6 +1305,12 @@ export function FleetFuelManagerPage({
                     Container Chassis (40ft HC)
                   </option>
                   <option value="Rigid 19T">Rigid 19T (Porteur)</option>
+                  <option value="Medium Distribution 12T">
+                    Medium Distribution (12T)
+                  </option>
+                  <option value="Light Urban Van 3.5T">
+                    Light Urban Delivery (3.5T-7.5T)
+                  </option>
                 </select>
               </div>
               <div>
@@ -1171,7 +1333,38 @@ export function FleetFuelManagerPage({
                   <option value="4x2 Rigid (19T)">
                     4x2 Rigid Porteur (19T)
                   </option>
+                  <option value="4x2 Distribution (12T)">
+                    4x2 Distribution (12T)
+                  </option>
+                  <option value="4x2 Light (3.5T-7.5T)">
+                    4x2 Light Delivery (3.5T-7.5T)
+                  </option>
                 </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-zinc-400 mb-1">
+                  Visite Technique Expiry
+                </label>
+                <input
+                  type="date"
+                  value={trkVisiteExpiry}
+                  onChange={(e) => setTrkVisiteExpiry(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-slate-600 dark:text-zinc-400 mb-1">
+                  Insurance Expiry Date
+                </label>
+                <input
+                  type="date"
+                  value={trkInsuranceExpiry}
+                  onChange={(e) => setTrkInsuranceExpiry(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono text-xs"
+                />
               </div>
             </div>
 
@@ -1584,13 +1777,13 @@ export function FleetFuelManagerPage({
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="block font-medium mb-1">
-                  {t.manager.driverNameLabel}
+                  {t.manager.driverNameLabel} *
                 </label>
                 <input
                   type="text"
                   value={drvName}
                   onChange={(e) => setDrvName(e.target.value)}
-                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5"
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-semibold"
                   required
                 />
               </div>
@@ -1611,15 +1804,176 @@ export function FleetFuelManagerPage({
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="block font-medium mb-1">
+                  Moroccan CIN (National ID)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. BK482910"
+                  value={drvCin}
+                  onChange={(e) => setDrvCin(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block font-medium mb-1">
+                  Phone / WhatsApp
+                </label>
+                <input
+                  type="text"
+                  placeholder="+212 6 61 00 00 00"
+                  value={drvPhone}
+                  onChange={(e) => setDrvPhone(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block font-medium mb-1">
+                  License Category (Permis)
+                </label>
+                <select
+                  value={drvLicenseCat}
+                  onChange={(e) => setDrvLicenseCat(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5"
+                >
+                  <option value="EC (Super Lourd 40T-44T)">
+                    EC (Super Lourd 40T-44T)
+                  </option>
+                  <option value="C (Poids Lourd 19T)">
+                    C (Poids Lourd 19T)
+                  </option>
+                  <option value="C + ADR (Hazardous)">
+                    C + ADR (Hazardous Freight)
+                  </option>
+                  <option value="B / Light Commercial">
+                    B / Light Commercial
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-medium mb-1">
+                  License Number
+                </label>
+                <input
+                  type="text"
+                  value={drvLicenseNo}
+                  onChange={(e) => setDrvLicenseNo(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block font-medium mb-1">
+                  License Expiry Date
+                </label>
+                <input
+                  type="date"
+                  value={drvLicenseExpiry}
+                  onChange={(e) => setDrvLicenseExpiry(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block font-medium mb-1">
+                  Medical Visit Expiry
+                </label>
+                <input
+                  type="date"
+                  value={drvMedicalExpiry}
+                  onChange={(e) => setDrvMedicalExpiry(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block font-medium mb-1">
                   {t.manager.truckCodeLabel}
                 </label>
                 <input
                   type="text"
+                  list="driver-truck-codes-datalist"
                   value={drvTruckCode}
                   onChange={(e) => setDrvTruckCode(e.target.value)}
                   className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono"
                 />
+                <datalist id="driver-truck-codes-datalist">
+                  {trucks.map((t) => (
+                    <option key={t.id} value={t.code}>
+                      {t.code} ({t.plate})
+                    </option>
+                  ))}
+                </datalist>
               </div>
+              <div>
+                <label className="block font-medium mb-1">
+                  Driver Status
+                </label>
+                <select
+                  value={drvStatus}
+                  onChange={(e) =>
+                    setDrvStatus(
+                      e.target.value as
+                        | "active"
+                        | "on_trip"
+                        | "on_leave"
+                        | "suspended"
+                    )
+                  }
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5"
+                >
+                  <option value="active">Active (Available)</option>
+                  <option value="on_trip">On Trip (En Route)</option>
+                  <option value="on_leave">On Leave / Rest</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5 text-xs">
+              <div>
+                <label className="block font-medium mb-1">
+                  Base Salary (MAD)
+                </label>
+                <input
+                  type="number"
+                  step="100"
+                  value={drvSalaryMad}
+                  onChange={(e) => setDrvSalaryMad(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block font-medium mb-1">
+                  Eco Bonus (MAD)
+                </label>
+                <input
+                  type="number"
+                  step="50"
+                  value={drvBonusMad}
+                  onChange={(e) => setDrvBonusMad(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
+                />
+              </div>
+              <div>
+                <label className="block font-medium mb-1">
+                  Fuel Card Code
+                </label>
+                <input
+                  type="text"
+                  value={drvFuelCard}
+                  onChange={(e) => setDrvFuelCard(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5 text-xs">
               <div>
                 <label className="block font-medium mb-1">
                   {t.manager.corridorLabel}
@@ -1628,12 +1982,21 @@ export function FleetFuelManagerPage({
                   type="text"
                   value={drvCorridor}
                   onChange={(e) => setDrvCorridor(e.target.value)}
-                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono"
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block font-medium mb-1">
+                  Km Driven (30d)
+                </label>
+                <input
+                  type="number"
+                  step="100"
+                  value={drvKmDriven}
+                  onChange={(e) => setDrvKmDriven(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
+                />
+              </div>
               <div>
                 <label className="block font-medium mb-1">
                   {t.manager.efficiencyLabel}
@@ -1643,9 +2006,12 @@ export function FleetFuelManagerPage({
                   step="0.1"
                   value={drvEfficiency}
                   onChange={(e) => setDrvEfficiency(e.target.value)}
-                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono"
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
                 />
               </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5 text-xs">
               <div>
                 <label className="block font-medium mb-1">
                   {t.manager.idleMinsLabel}
@@ -1654,12 +2020,9 @@ export function FleetFuelManagerPage({
                   type="number"
                   value={drvIdleMins}
                   onChange={(e) => setDrvIdleMins(e.target.value)}
-                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono"
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="block font-medium mb-1">
                   {t.manager.incidentsLabel}
@@ -1669,7 +2032,7 @@ export function FleetFuelManagerPage({
                   min="0"
                   value={drvIncidents}
                   onChange={(e) => setDrvIncidents(e.target.value)}
-                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono"
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono"
                 />
               </div>
               <div>
@@ -1682,9 +2045,22 @@ export function FleetFuelManagerPage({
                   max="100"
                   value={drvEcoScore}
                   onChange={(e) => setDrvEcoScore(e.target.value)}
-                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5 font-mono font-bold"
+                  className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5 font-mono font-bold"
                 />
               </div>
+            </div>
+
+            <div className="text-xs">
+              <label className="block font-medium mb-1">
+                Driver Notes & Certifications
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Notes, ADR certificate, emergency contact, training history..."
+                value={drvNotes}
+                onChange={(e) => setDrvNotes(e.target.value)}
+                className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-1.5"
+              />
             </div>
 
             <button
@@ -1694,8 +2070,8 @@ export function FleetFuelManagerPage({
               <Save className="h-3.5 w-3.5" />
               <span>
                 {editingDriverId
-                  ? "Save Driver Changes to Supabase"
-                  : "Save New Driver to Supabase"}
+                  ? "Save Full Driver Profile to Supabase"
+                  : "Save New Driver Profile to Supabase"}
               </span>
             </button>
           </form>
@@ -1712,17 +2088,17 @@ export function FleetFuelManagerPage({
                   No Drivers Registered Yet (0 Records)
                 </p>
                 <p className="text-xs text-slate-500">
-                  Add a driver manually on the left or upload an Excel (`.xlsx`) workbook.
+                  Add a driver profile manually on the left or upload an Excel (`.xlsx`) workbook.
                 </p>
               </div>
             ) : (
               <table className="w-full text-start border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-zinc-800 text-[11px] font-semibold uppercase text-slate-500">
-                    <th className="py-2.5 px-3 text-start">Driver</th>
+                    <th className="py-2.5 px-3 text-start">Driver & CIN / Phone</th>
+                    <th className="py-2.5 px-3 text-start">License & Status</th>
                     <th className="py-2.5 px-3 text-start">Truck & Corridor</th>
-                    <th className="py-2.5 px-3 text-start">L/100km</th>
-                    <th className="py-2.5 px-3 text-start">Idle (30D)</th>
+                    <th className="py-2.5 px-3 text-start">Salary / Fuel Card</th>
                     <th className="py-2.5 px-3 text-start">Eco-Score</th>
                     <th className="py-2.5 px-3 text-end">Actions</th>
                   </tr>
@@ -1737,31 +2113,65 @@ export function FleetFuelManagerPage({
                         <span className="font-bold text-slate-900 dark:text-zinc-100 block">
                           {drv.name[locale]}
                         </span>
-                        <span className="font-mono text-[11px] text-slate-500">
-                          {drv.driverCode}
+                        <span className="font-mono text-[11px] text-slate-500 block">
+                          {drv.driverCode} {drv.cinNumber ? `• CIN: ${drv.cinNumber}` : ""}
+                        </span>
+                        {drv.phone && (
+                          <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 block">
+                            {drv.phone}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="font-semibold text-slate-800 dark:text-zinc-200 block">
+                          {drv.licenseCategory || "EC (Super Lourd)"}
+                        </span>
+                        <span className="font-mono text-[10px] text-slate-500 block">
+                          {drv.licenseNumber || "MA-EC"} {drv.licenseExpiry ? `• Exp: ${drv.licenseExpiry}` : ""}
+                        </span>
+                        <span
+                          className={`inline-block mt-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                            drv.status === "suspended"
+                              ? "bg-red-100 text-red-700"
+                              : drv.status === "on_leave"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}
+                        >
+                          {drv.status || "active"}
                         </span>
                       </td>
                       <td className="py-3 px-3 font-mono">
-                        {drv.truckCode} • {drv.corridor}
+                        <span className="font-bold block">{drv.truckCode}</span>
+                        <span className="text-[11px] text-slate-500">
+                          {drv.corridor} • {drv.kmDriven30d?.toLocaleString() || 0} km
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 font-mono text-[11px]">
+                        <span className="font-bold block">
+                          {(drv.baseSalaryMad ?? 7500).toLocaleString()} MAD
+                        </span>
+                        <span className="text-slate-500 block">
+                          Bonus: +{(drv.bonusMad ?? 1500).toLocaleString()} MAD
+                        </span>
                       </td>
                       <td className="py-3 px-3 font-mono font-bold">
-                        {drv.fuelEfficiencyL100km} L/100km
-                      </td>
-                      <td className="py-3 px-3 font-mono">
-                        {drv.totalIdleMinutes30d} min
-                      </td>
-                      <td className="py-3 px-3 font-mono font-bold">
-                        {drv.ecoScore}/100 ({drv.badge.toUpperCase()})
+                        <div>
+                          {drv.ecoScore}/100 ({drv.badge.toUpperCase()})
+                        </div>
+                        <div className="text-[11px] font-normal text-slate-500">
+                          {drv.fuelEfficiencyL100km} L/100km
+                        </div>
                       </td>
                       <td className="py-3 px-3 text-end">
                         <div className="inline-flex items-center gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleStartEditDriver(drv)}
-                            className="inline-flex items-center gap-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 px-2 py-1 text-[11px] font-medium"
+                            className="inline-flex items-center gap-1 rounded bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-2.5 py-1 text-[11px] font-bold"
                           >
                             <Pencil className="h-3 w-3" />
-                            {t.manager.editBtn}
+                            <span>Edit Full Profile</span>
                           </button>
                           <button
                             type="button"
@@ -1769,7 +2179,7 @@ export function FleetFuelManagerPage({
                               setDeleteRequest({
                                 title: "Delete Driver from Instance?",
                                 itemName: `${drv.name.en} (${drv.driverCode})`,
-                                description: `Are you sure you want to permanently delete driver ${drv.name.en} (${drv.driverCode})? This change will be saved to Supabase immediately.`,
+                                description: `Are you sure you want to permanently delete driver ${drv.name.en} (${drv.driverCode})?`,
                                 onConfirm: () => {
                                   onDeleteDriver(drv.id);
                                   notifySaved(

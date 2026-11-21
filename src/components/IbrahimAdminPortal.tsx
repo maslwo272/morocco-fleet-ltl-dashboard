@@ -55,6 +55,7 @@ import {
 } from "@/lib/excel/fleetWorkbook";
 import { TranslationDictionary } from "@/lib/i18n/translations";
 import { FleetFuelManagerPage } from "./FleetFuelManagerPage";
+import { ClientBrandingStudioPage } from "./ClientBrandingStudioPage";
 import {
   ConfirmDeleteModal,
   DeleteConfirmationRequest,
@@ -114,7 +115,9 @@ const ALL_DEMO_TABS: { id: ClientDemoTabId; label: string }[] = [
   { id: "live-map", label: "Live Map & Idling" },
   { id: "ltl-optimizer", label: "LTL Optimizer" },
   { id: "driver-eco", label: "Driver Eco-Scores" },
+  { id: "tasks", label: "Tasks & Operations" },
   { id: "fleet-manager", label: "Fleet, Routes & Excel CRUD" },
+  { id: "company-branding", label: "Company Logo, Header & Footer" },
 ];
 
 export function IbrahimAdminPortal({
@@ -311,6 +314,7 @@ export function IbrahimAdminPortal({
           drivers: newInstanceExcel.drivers,
           fuelPurchases: newInstanceExcel.fuelPurchases,
           alerts: [],
+          tasks: [],
         }
       : {
           trucks: [],
@@ -319,6 +323,7 @@ export function IbrahimAdminPortal({
           drivers: [],
           fuelPurchases: [],
           alerts: [],
+          tasks: [],
         };
 
     const created: ClientDemoInstance = {
@@ -343,7 +348,9 @@ export function IbrahimAdminPortal({
         "live-map",
         "ltl-optimizer",
         "driver-eco",
+        "tasks",
         "fleet-manager",
+        "company-branding",
       ],
       defaultLocale: newLocale,
       defaultColorMode: "light",
@@ -361,6 +368,15 @@ export function IbrahimAdminPortal({
         surfaceStyle: "modern",
         brandMonogram: monogram,
         brandTagline: "Portail Exécutif Flotte & LTL Maroc",
+        logoDataUrl: "",
+        headerTitle: rawName,
+        headerSubtitle: "Portail Exécutif Flotte & LTL Maroc",
+        headerContactPhone: "+212 5 22 00 00 00",
+        headerAnnouncement: "",
+        footerCompanyLegal: `${rawName} S.A.R.L.`,
+        footerAddress: `${newCity}, Maroc`,
+        footerCopyright: `© ${new Date().getFullYear()} ${rawName}. All rights reserved.`,
+        footerShowPoweredBy: true,
       },
       contactCtaLabel: `Contact ${config.adminOwnerName} — Deploy Full Production Fleet`,
       contactCtaUrl: "https://wa.me/212600000000",
@@ -976,7 +992,40 @@ export function IbrahimAdminPortal({
                   </div>
                 </div>
 
-                {/* Client Instances Cards Grid */}
+                {/* Client Instances Cards Grid (or Clean 0-Instance Empty State) */}
+                {demoInstances.length === 0 ? (
+                  <div className="rounded-2xl bg-white dark:bg-zinc-900 border-2 border-dashed border-slate-300 dark:border-zinc-800 p-10 text-center space-y-4 shadow-sm">
+                    <div className="h-14 w-14 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto">
+                      <Plus className="h-7 w-7" />
+                    </div>
+                    <div className="space-y-1 max-w-lg mx-auto">
+                      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-zinc-100">
+                        0 Client Instances — Clean Slate (No Random Demo Data)
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
+                        Everything has been reset to 0 so you and {config.adminOwnerName} can build each prospect or client instance from scratch with their real company profile, logo, custom header & footer, trucks, driver profiles, routes, tasks, and gas purchases.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateModal(true)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 text-xs sm:text-sm font-bold shadow-md transition-colors"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>+ Create First Real Client Instance</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadFleetExcelTemplate()}
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 px-4 py-3 text-xs font-bold"
+                      >
+                        <FileSpreadsheet className="h-4 w-4" />
+                        <span>Download 4-Sheet Excel (.xlsx) Template</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
                   {demoInstances.map((inst) => {
                     const shareUrl = `${getOriginUrl()}/?demo=${inst.slug}`;
@@ -1151,42 +1200,63 @@ export function IbrahimAdminPortal({
                               <CopyPlus className="h-3.5 w-3.5" />
                             </button>
 
-                            {demoInstances.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setDeleteRequest({
-                                    title:
-                                      "Permanently Delete Client Instance?",
-                                    itemName: `${inst.clientName.en} (?demo=${inst.slug})`,
-                                    description: `Are you sure you want to permanently delete the client instance "${inst.clientName.en}" and all ${instTruckCount} trucks / ${instDriverCount} drivers inside it from Supabase?`,
-                                    confirmLabel: "Yes, Delete Instance",
-                                    onConfirm: () => {
-                                      onDeleteDemoInstance(inst.id);
-                                      triggerSavedToast(
-                                        `✓ Deleted instance "${inst.clientName.en}" from Supabase.`
-                                      );
-                                    },
-                                  })
-                                }
-                                className="rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-950/40 p-1.5 text-red-600 dark:text-red-400"
-                                title="Delete Instance"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDeleteRequest({
+                                  title:
+                                    "Permanently Delete Client Instance?",
+                                  itemName: `${inst.clientName.en} (?demo=${inst.slug})`,
+                                  description: `Are you sure you want to permanently delete the client instance "${inst.clientName.en}" and all ${instTruckCount} trucks / ${instDriverCount} drivers inside it from Supabase?`,
+                                  confirmLabel: "Yes, Delete Instance",
+                                  onConfirm: () => {
+                                    onDeleteDemoInstance(inst.id);
+                                    triggerSavedToast(
+                                      `✓ Deleted instance "${inst.clientName.en}" from Supabase.`
+                                    );
+                                  },
+                                })
+                              }
+                              className="rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-950/40 p-1.5 text-red-600 dark:text-red-400"
+                              title="Delete Instance"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
                           </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
+                )}
               </div>
             )}
 
             {/* =================================================================
                 ADMIN VIEW 2: DEEP INSTANCE EDITOR (PROFILE, THEME & FLEET/EXCEL)
             ================================================================= */}
+            {adminView === "builder" && !editInstance && (
+              <div className="rounded-2xl bg-white dark:bg-zinc-900 border-2 border-dashed border-slate-300 dark:border-zinc-800 p-10 text-center space-y-3">
+                <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+                  No Client Instance Selected Yet
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Create your first client instance to configure its fleet, drivers, routes, tasks, logo, header, and footer.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminView("instances");
+                    setShowCreateModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-xs font-bold shadow-sm"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>+ Create New Client Instance</span>
+                </button>
+              </div>
+            )}
+
             {adminView === "builder" && editInstance && draftInstance && (
               <div className="space-y-6">
                 <div className="rounded-xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 p-5 shadow-sm flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -1507,280 +1577,22 @@ export function IbrahimAdminPortal({
                   </div>
                 )}
 
-                {/* SUB-TAB 3: WHITE-LABEL THEME, FONTS & COLORS (WITH EXPLICIT SAVE BUTTON) */}
+                {/* SUB-TAB 3: COMPANY LOGO, CUSTOM HEADER, CUSTOM FOOTER & WHITE-LABEL THEME */}
                 {builderSubTab === "theme" && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-                      <div className="xl:col-span-6 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 p-5 shadow-sm space-y-4">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2 border-b border-slate-200 dark:border-zinc-800 pb-3">
-                          <Palette className="h-4 w-4 text-blue-600" />
-                          <span>
-                            Brand Colors & Monogram for{" "}
-                            {draftInstance.clientName.en}
-                          </span>
-                        </h3>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {(
-                            Object.keys(BRAND_COLOR_PRESETS) as Exclude<
-                              BrandColorPresetId,
-                              "custom"
-                            >[]
-                          ).map((presetKey) => {
-                            const preset = BRAND_COLOR_PRESETS[presetKey];
-                            const isSelected =
-                              draftInstance.themeConfig.colorPresetId ===
-                              presetKey;
-                            return (
-                              <button
-                                key={presetKey}
-                                type="button"
-                                onClick={() =>
-                                  updateDraftTheme({
-                                    colorPresetId: presetKey,
-                                    primaryHex: preset.primaryHex,
-                                    primaryHoverHex: preset.primaryHoverHex,
-                                    primaryLightHex: preset.primaryLightHex,
-                                  })
-                                }
-                                className={`rounded-xl p-3.5 border text-start transition-all flex items-center justify-between ${
-                                  isSelected
-                                    ? "bg-slate-50 dark:bg-zinc-800 border-slate-900 dark:border-zinc-400"
-                                    : "bg-white dark:bg-zinc-950 border-slate-200 dark:border-zinc-800"
-                                }`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <span
-                                    className="h-8 w-8 rounded-lg shadow-sm shrink-0"
-                                    style={{
-                                      backgroundColor: preset.primaryHex,
-                                    }}
-                                  />
-                                  <div>
-                                    <span className="text-xs font-bold block">
-                                      {preset.name}
-                                    </span>
-                                    <span className="text-[11px] font-mono text-slate-500">
-                                      {preset.primaryHex}
-                                    </span>
-                                  </div>
-                                </div>
-                                {isSelected && <Check className="h-4 w-4" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 grid grid-cols-3 gap-3 text-xs">
-                          <div>
-                            <label className="block font-semibold mb-1">
-                              Custom Hex Color
-                            </label>
-                            <div className="flex items-center gap-2 rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-2.5 py-1.5">
-                              <input
-                                type="color"
-                                value={draftInstance.themeConfig.primaryHex}
-                                onChange={(e) =>
-                                  updateDraftTheme({
-                                    colorPresetId: "custom",
-                                    primaryHex: e.target.value,
-                                    primaryHoverHex: e.target.value,
-                                    primaryLightHex: e.target.value,
-                                  })
-                                }
-                                className="h-6 w-8 cursor-pointer border-0 bg-transparent"
-                              />
-                              <span className="font-mono font-bold">
-                                {draftInstance.themeConfig.primaryHex}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block font-semibold mb-1">
-                              Monogram Badge
-                            </label>
-                            <input
-                              type="text"
-                              maxLength={3}
-                              value={draftInstance.themeConfig.brandMonogram}
-                              onChange={(e) =>
-                                updateDraftTheme({
-                                  brandMonogram: e.target.value.toUpperCase(),
-                                })
-                              }
-                              className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono font-bold uppercase"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-semibold mb-1">
-                              Brand Tagline
-                            </label>
-                            <input
-                              type="text"
-                              value={draftInstance.themeConfig.brandTagline}
-                              onChange={(e) =>
-                                updateDraftTheme({
-                                  brandTagline: e.target.value,
-                                })
-                              }
-                              className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="xl:col-span-6 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 p-5 shadow-sm space-y-4">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2 border-b border-slate-200 dark:border-zinc-800 pb-3">
-                          <Type className="h-4 w-4 text-blue-600" />
-                          <span>
-                            Typography (Latin + Arabic Naskh/Kufi) & Card Style
-                          </span>
-                        </h3>
-
-                        <div className="space-y-3.5 text-xs">
-                          <div>
-                            <label className="block font-semibold mb-1">
-                              Latin Interface Font (EN / FR)
-                            </label>
-                            <select
-                              value={draftInstance.themeConfig.latinFont}
-                              onChange={(e) =>
-                                updateDraftTheme({
-                                  latinFont: e.target.value as LatinFontId,
-                                })
-                              }
-                              className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-semibold"
-                            >
-                              {LATIN_FONT_OPTIONS.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block font-semibold mb-1">
-                              Arabic Interface Font (الخط العربي — RTL)
-                            </label>
-                            <select
-                              value={draftInstance.themeConfig.arabicFont}
-                              onChange={(e) =>
-                                updateDraftTheme({
-                                  arabicFont: e.target.value as ArabicFontId,
-                                })
-                              }
-                              className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-semibold"
-                            >
-                              {ARABIC_FONT_OPTIONS.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block font-semibold mb-1">
-                              Monospace Telemetry Font
-                            </label>
-                            <select
-                              value={draftInstance.themeConfig.monoFont}
-                              onChange={(e) =>
-                                updateDraftTheme({
-                                  monoFont: e.target.value as MonoFontId,
-                                })
-                              }
-                              className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-semibold"
-                            >
-                              {MONO_FONT_OPTIONS.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="pt-2">
-                            <label className="block font-semibold mb-2">
-                              Card & Surface Geometry Style
-                            </label>
-                            <div className="grid grid-cols-3 gap-2.5">
-                              {(
-                                [
-                                  {
-                                    id: "sharp",
-                                    title: "Sharp Institutional",
-                                    desc: "6px tight radius",
-                                  },
-                                  {
-                                    id: "modern",
-                                    title: "Modern B2B SaaS",
-                                    desc: "12px balanced radius",
-                                  },
-                                  {
-                                    id: "glass",
-                                    title: "Executive Elevated",
-                                    desc: "16px smooth radius",
-                                  },
-                                ] as {
-                                  id: SurfaceStyleId;
-                                  title: string;
-                                  desc: string;
-                                }[]
-                              ).map((st) => (
-                                <button
-                                  key={st.id}
-                                  type="button"
-                                  onClick={() =>
-                                    updateDraftTheme({
-                                      surfaceStyle: st.id,
-                                    })
-                                  }
-                                  className={`rounded-xl p-3 border text-start ${
-                                    draftInstance.themeConfig.surfaceStyle ===
-                                    st.id
-                                      ? "bg-blue-50 dark:bg-blue-950/30 border-blue-600"
-                                      : "bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800"
-                                  }`}
-                                >
-                                  <span className="font-bold block">
-                                    {st.title}
-                                  </span>
-                                  <span className="text-[10px] text-slate-500">
-                                    {st.desc}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Explicit Save Theme Button Bar */}
-                    <div className="rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 p-4 flex items-center justify-end gap-3">
-                      {hasUnsavedInstanceChanges && (
-                        <button
-                          type="button"
-                          onClick={handleDiscardDraftInstance}
-                          className="rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 px-4 py-2.5 text-xs font-semibold"
-                        >
-                          Discard Changes
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={handleSaveDraftInstance}
-                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-xs font-bold shadow-sm"
-                      >
-                        <Save className="h-4 w-4" />
-                        <span>Save Theme, Fonts & Colors to Supabase</span>
-                      </button>
-                    </div>
-                  </div>
+                  <ClientBrandingStudioPage
+                    instance={editInstance}
+                    locale={locale}
+                    onSaveInstance={async (updated) => {
+                      const merged: ClientDemoInstance = {
+                        ...updated,
+                        fleetData: editInstance.fleetData,
+                      };
+                      onUpdateDemoInstance(merged);
+                      setDraftInstance(JSON.parse(JSON.stringify(merged)));
+                      setHasUnsavedInstanceChanges(false);
+                      await onForceCloudSync();
+                    }}
+                  />
                 )}
               </div>
             )}
