@@ -229,3 +229,62 @@ create policy "Tenant members can read daily financials"
   on public.daily_fleet_financials for select
   to authenticated
   using ( company_id = ((select auth.jwt()) -> 'app_metadata' ->> 'company_id')::uuid );
+
+-- 8. Live GPS Telemetry Latest Ping State (Hybrid Traccar / Teltonika / Wialon / Mobile GPS)
+create table if not exists public.gps_telemetry_latest (
+  id uuid primary key default gen_random_uuid(),
+  instance_slug text not null,
+  device_imei text not null,
+  truck_code text not null,
+  driver_name text,
+  driver_phone text,
+  provider text not null default 'traccar',
+  latitude double precision not null,
+  longitude double precision not null,
+  speed_kmh numeric(6,2) not null default 0,
+  ignition boolean not null default false,
+  fuel_level_pct numeric(5,2),
+  fuel_liters numeric(7,2),
+  idle_started_at timestamptz,
+  idle_minutes integer not null default 0,
+  last_tier1_alert_at timestamptz,
+  last_tier2_alert_at timestamptz,
+  last_overspeed_alert_at timestamptz,
+  last_fuel_drop_alert_at timestamptz,
+  last_ping_at timestamptz not null default now(),
+  raw_payload jsonb,
+  unique (instance_slug, device_imei)
+);
+
+create index if not exists idx_gps_telemetry_latest_slug_ping
+  on public.gps_telemetry_latest(instance_slug, last_ping_at desc);
+create index if not exists idx_gps_telemetry_latest_imei
+  on public.gps_telemetry_latest(device_imei);
+
+-- 9. GPS Alert Delivery Audit Log (Telegram Bot & Meta WhatsApp Cloud API)
+create table if not exists public.gps_alert_logs (
+  id uuid primary key default gen_random_uuid(),
+  instance_slug text not null,
+  device_imei text not null,
+  truck_code text not null,
+  driver_name text,
+  alert_type text not null,
+  severity text not null,
+  idle_minutes integer not null default 0,
+  wasted_fuel_liters numeric(6,2) not null default 0,
+  wasted_fuel_mad numeric(10,2) not null default 0,
+  latitude double precision,
+  longitude double precision,
+  channel text not null,
+  delivery_status text not null,
+  delivery_detail text,
+  message_text text not null,
+  acknowledged boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_gps_alert_logs_slug_created
+  on public.gps_alert_logs(instance_slug, created_at desc);
+
+grant usage on schema public to anon, authenticated, service_role;
+grant all on table public.gps_telemetry_latest, public.gps_alert_logs to anon, authenticated, service_role;

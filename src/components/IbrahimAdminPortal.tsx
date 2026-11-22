@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ShieldCheck,
   Plus,
@@ -25,6 +25,7 @@ import {
   Save,
   FileSpreadsheet,
   Upload,
+  Radio,
 } from "lucide-react";
 import {
   ARABIC_FONT_OPTIONS,
@@ -34,8 +35,12 @@ import {
   BrandThemeConfig,
   ClientDemoInstance,
   ClientDemoTabId,
+  DEFAULT_GPS_ALERTS_CONFIG,
   DriverEcoRecord,
   FuelPurchaseRecord,
+  GpsAlertLogRow,
+  GpsAlertsConfig,
+  GpsTelemetryLatestRow,
   InstanceFleetData,
   LATIN_FONT_OPTIONS,
   LatinFontId,
@@ -56,6 +61,7 @@ import {
 import { TranslationDictionary } from "@/lib/i18n/translations";
 import { FleetFuelManagerPage } from "./FleetFuelManagerPage";
 import { ClientBrandingStudioPage } from "./ClientBrandingStudioPage";
+import { GpsAlertsStudioPage } from "./GpsAlertsStudioPage";
 import {
   ConfirmDeleteModal,
   DeleteConfirmationRequest,
@@ -118,6 +124,7 @@ const ALL_DEMO_TABS: { id: ClientDemoTabId; label: string }[] = [
   { id: "tasks", label: "Tasks & Operations" },
   { id: "fleet-manager", label: "Fleet, Routes & Excel CRUD" },
   { id: "company-branding", label: "Company Logo, Header & Footer" },
+  { id: "gps-alerts", label: "GPS & WhatsApp/Telegram Alerts" },
 ];
 
 export function IbrahimAdminPortal({
@@ -163,8 +170,12 @@ export function IbrahimAdminPortal({
     "instances" | "builder" | "formulas" | "cloud"
   >("instances");
   const [builderSubTab, setBuilderSubTab] = useState<
-    "profile" | "theme" | "fleet"
+    "profile" | "theme" | "fleet" | "gps"
   >("profile");
+  const [adminLiveTelemetry, setAdminLiveTelemetry] = useState<
+    GpsTelemetryLatestRow[]
+  >([]);
+  const [adminAlertLogs, setAdminAlertLogs] = useState<GpsAlertLogRow[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [copiedBadge, setCopiedBadge] = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState<string | null>(null);
@@ -211,6 +222,35 @@ export function IbrahimAdminPortal({
       setHasUnsavedInstanceChanges(false);
     }
   }, [selectedEditInstanceId, editInstance]);
+
+  const fetchAdminGpsLive = useCallback(async () => {
+    const slug = editInstance?.slug;
+    if (!slug) {
+      setAdminLiveTelemetry([]);
+      setAdminAlertLogs([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/gps/live?slug=${encodeURIComponent(slug)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setAdminLiveTelemetry(data.telemetry || []);
+        setAdminAlertLogs(data.alertLogs || []);
+      }
+    } catch {
+      // ignore fetch error
+    }
+  }, [editInstance?.slug]);
+
+  useEffect(() => {
+    if (adminView === "builder" && builderSubTab === "gps") {
+      fetchAdminGpsLive();
+    }
+  }, [adminView, builderSubTab, fetchAdminGpsLive]);
 
   useEffect(() => {
     setDraftConfig(JSON.parse(JSON.stringify(config)));
@@ -351,12 +391,17 @@ export function IbrahimAdminPortal({
         "tasks",
         "fleet-manager",
         "company-branding",
+        "gps-alerts",
       ],
       defaultLocale: newLocale,
       defaultColorMode: "light",
       fuelPriceMad: 15.9,
       totalFleetCount: initialFleet.trucks.length,
       activeTrucksCount: initialFleet.trucks.length,
+      gpsAlertsConfig: {
+        ...DEFAULT_GPS_ALERTS_CONFIG,
+        webhookSecret: `atlas-${Math.random().toString(36).slice(2, 10)}`,
+      },
       themeConfig: {
         colorPresetId: newColorPreset,
         primaryHex: preset.primaryHex,
@@ -1325,6 +1370,18 @@ export function IbrahimAdminPortal({
                     >
                       3. Theme, Fonts & Colors
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setBuilderSubTab("gps")}
+                      className={`rounded-lg px-3.5 py-2 text-xs font-bold transition-all inline-flex items-center gap-1.5 ${
+                        builderSubTab === "gps"
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "text-slate-600 dark:text-zinc-400"
+                      }`}
+                    >
+                      <Radio className="h-3.5 w-3.5" />
+                      <span>4. GPS & WhatsApp/Telegram Alerts</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1594,6 +1651,37 @@ export function IbrahimAdminPortal({
                     }}
                   />
                 )}
+
+                {/* SUB-TAB 4: GPS TRACKING & WHATSAPP / TELEGRAM ALERTS STUDIO */}
+                {builderSubTab === "gps" && (
+                  <GpsAlertsStudioPage
+                    instance={editInstance}
+                    platformConfig={config}
+                    trucks={activeEditInstanceFleet.trucks}
+                    drivers={activeEditInstanceFleet.drivers}
+                    liveTelemetry={adminLiveTelemetry}
+                    alertLogs={adminAlertLogs}
+                    onSaveGpsConfig={async (updatedGps: GpsAlertsConfig) => {
+                      const merged: ClientDemoInstance = {
+                        ...editInstance,
+                        gpsAlertsConfig: updatedGps,
+                      };
+                      onUpdateDemoInstance(merged);
+                      setDraftInstance(JSON.parse(JSON.stringify(merged)));
+                      setHasUnsavedInstanceChanges(false);
+                      await onForceCloudSync();
+                    }}
+                    onRefreshLive={fetchAdminGpsLive}
+                    onAcknowledgeAlertLog={async (logId: string) => {
+                      await fetch("/api/gps/live", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: logId, acknowledged: true }),
+                      });
+                      await fetchAdminGpsLive();
+                    }}
+                  />
+                )}
               </div>
             )}
 
@@ -1766,6 +1854,109 @@ export function IbrahimAdminPortal({
                         <span>Force Sync All Instances Now</span>
                       </button>
                     </div>
+                  </div>
+                </div>
+
+                {/* Central Telegram Bot & Meta WhatsApp Cloud API Credentials (Shared Across Instances) */}
+                <div className="xl:col-span-12 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200/90 dark:border-zinc-800 p-6 shadow-sm space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-zinc-800 pb-3">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
+                        Central Telegram Bot & Meta WhatsApp Cloud API Credentials (Shared Across Instances)
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Configure {draftConfig.adminOwnerName}&apos;s central Telegram Bot Token and Meta WhatsApp API once here — new client instances only need to paste their Group Chat ID or phone number!
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                    <div>
+                      <label className="block font-semibold mb-1">
+                        Central Telegram Bot Token (`@BotFather`)
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="71829301:AAH..."
+                        value={draftConfig.centralTelegramBotToken || ""}
+                        onChange={(e) => {
+                          setDraftConfig({
+                            ...draftConfig,
+                            centralTelegramBotToken: e.target.value,
+                          });
+                          setHasUnsavedConfigChanges(true);
+                        }}
+                        className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold mb-1">
+                        Central Meta WhatsApp Phone Number ID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 48291038491023"
+                        value={draftConfig.centralWhatsappPhoneNumberId || ""}
+                        onChange={(e) => {
+                          setDraftConfig({
+                            ...draftConfig,
+                            centralWhatsappPhoneNumberId: e.target.value,
+                          });
+                          setHasUnsavedConfigChanges(true);
+                        }}
+                        className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold mb-1">
+                        Central Meta WhatsApp Permanent Access Token
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="EAAG..."
+                        value={draftConfig.centralWhatsappAccessToken || ""}
+                        onChange={(e) => {
+                          setDraftConfig({
+                            ...draftConfig,
+                            centralWhatsappAccessToken: e.target.value,
+                          });
+                          setHasUnsavedConfigChanges(true);
+                        }}
+                        className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold mb-1">
+                        Traccar Server Public URL (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://gps.yourdomain.ma"
+                        value={draftConfig.traccarServerUrl || ""}
+                        onChange={(e) => {
+                          setDraftConfig({
+                            ...draftConfig,
+                            traccarServerUrl: e.target.value,
+                          });
+                          setHasUnsavedConfigChanges(true);
+                        }}
+                        className="w-full rounded-lg bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 px-3 py-2 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveDraftConfig}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 text-xs font-bold shadow-sm transition-colors"
+                    >
+                      <Save className="h-4 w-4" />
+                      <span>Save Central Messaging Credentials to Supabase</span>
+                    </button>
                   </div>
                 </div>
 

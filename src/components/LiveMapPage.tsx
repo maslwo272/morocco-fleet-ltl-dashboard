@@ -17,9 +17,13 @@ import {
   Compass,
   Boxes,
   KeyRound,
+  BellRing,
+  MessageCircle,
 } from "lucide-react";
 import {
   calculateMoroccoRoute,
+  DriverEcoRecord,
+  GpsTelemetryLatestRow,
   Locale,
   MapTruck,
   MOROCCO_CITY_COORDS,
@@ -34,11 +38,14 @@ interface LiveMapPageProps {
   fuelPriceMad: number;
   trucks: MapTruck[];
   alerts: TelemetryAlert[];
+  drivers?: DriverEcoRecord[];
+  liveTelemetry?: GpsTelemetryLatestRow[];
   isStreamRunning: boolean;
   onToggleStream: () => void;
   onSimulateAlert: () => void;
   onAcknowledgeAlert: (alertId: string) => void;
   onStopTruckIdle: (truckId: string) => void;
+  onNavigateGpsStudio?: () => void;
 }
 
 interface MoroccoHub {
@@ -337,11 +344,14 @@ export function LiveMapPage({
   fuelPriceMad,
   trucks,
   alerts,
+  drivers = [],
+  liveTelemetry = [],
   isStreamRunning,
   onToggleStream,
   onSimulateAlert,
   onAcknowledgeAlert,
   onStopTruckIdle,
+  onNavigateGpsStudio,
 }: LiveMapPageProps) {
   const [statusFilter, setStatusFilter] = useState<"all" | "moving" | "idling" | "alert">("all");
   const [viewportMode, setViewportMode] = useState<MapViewportMode>("full");
@@ -528,6 +538,17 @@ export function LiveMapPage({
             <PlusCircle className="h-3.5 w-3.5" />
             {t.liveMap.simulateTelemetryBtn}
           </button>
+
+          {onNavigateGpsStudio && (
+            <button
+              type="button"
+              onClick={onNavigateGpsStudio}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 text-xs font-bold shadow-sm transition-colors"
+            >
+              <BellRing className="h-3.5 w-3.5" />
+              <span>Configure GPS & WhatsApp/Telegram Alerts</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1063,6 +1084,32 @@ export function LiveMapPage({
                       >
                         {selectedTruck.status}
                       </span>
+                      {(selectedTruck.lastGpsPingAt ||
+                        selectedTruck.gpsDeviceImei ||
+                        liveTelemetry.some(
+                          (lt) =>
+                            lt.truck_code.toLowerCase() ===
+                              selectedTruck.code.toLowerCase() ||
+                            (selectedTruck.gpsDeviceImei &&
+                              lt.device_imei === selectedTruck.gpsDeviceImei)
+                        )) && (
+                        <>
+                          <span className="rounded-md bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 px-2 py-0.5 text-[10px] font-mono font-bold text-sky-700 dark:text-sky-300">
+                            LIVE GPS
+                          </span>
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[10px] font-mono font-bold border ${
+                              selectedTruck.ignitionOn ?? selectedTruck.status !== "moving"
+                                ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800"
+                                : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700"
+                            }`}
+                          >
+                            {selectedTruck.ignitionOn === false
+                              ? "ENGINE OFF"
+                              : "IGNITION ON"}
+                          </span>
+                        </>
+                      )}
                     </div>
                     <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
                       {selectedTruck.model} • {selectedTruck.currentLocation[locale]}
@@ -1258,7 +1305,7 @@ export function LiveMapPage({
                       {alert.detail[locale]}
                     </p>
 
-                    <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-200/70 dark:border-zinc-800/70">
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70 dark:border-zinc-800/70">
                       {alert.wastedFuelLiters ? (
                         <span className="text-xs font-mono font-medium text-amber-800 dark:text-amber-400">
                           {(alert.wastedFuelLiters * fuelPriceMad).toFixed(2)} MAD ({alert.wastedFuelLiters} L @ {fuelPriceMad.toFixed(2)})
@@ -1269,23 +1316,68 @@ export function LiveMapPage({
                         </span>
                       )}
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAcknowledgeAlert(alert.id);
-                        }}
-                        disabled={alert.acknowledged}
-                        className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                          alert.acknowledged
-                            ? "text-emerald-700 dark:text-emerald-400 cursor-default"
-                            : "bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-800 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700"
-                        }`}
-                      >
-                        {alert.acknowledged
-                          ? `✓ ${t.liveMap.acknowledgedLabel}`
-                          : t.liveMap.acknowledgeBtn}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {(() => {
+                          const matchedDriver = drivers.find(
+                            (d) =>
+                              d.truckCode.toLowerCase() ===
+                              alert.truckCode.toLowerCase()
+                          );
+                          let digits = (
+                            matchedDriver?.whatsapp ||
+                            matchedDriver?.phone ||
+                            ""
+                          ).replace(/[^\d]/g, "");
+                          if (digits.startsWith("00")) digits = digits.slice(2);
+                          if (digits.length === 10 && digits.startsWith("0")) {
+                            digits = `212${digits.slice(1)}`;
+                          }
+                          const waMsg = encodeURIComponent(
+                            `⚠️ ${alert.truckCode} (${alert.corridor}): ${cleanAlertText(
+                              alert.text[locale]
+                            )}${
+                              alert.wastedFuelLiters
+                                ? ` — ${(alert.wastedFuelLiters * fuelPriceMad).toFixed(
+                                    0
+                                  )} MAD wasted`
+                                : ""
+                            }`
+                          );
+                          const waHref = digits
+                            ? `https://wa.me/${digits}?text=${waMsg}`
+                            : `https://wa.me/?text=${waMsg}`;
+                          return (
+                            <a
+                              href={waHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-[11px] font-semibold transition-colors"
+                            >
+                              <MessageCircle className="h-3 w-3" />
+                              <span>WhatsApp Driver</span>
+                            </a>
+                          );
+                        })()}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAcknowledgeAlert(alert.id);
+                          }}
+                          disabled={alert.acknowledged}
+                          className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                            alert.acknowledged
+                              ? "text-emerald-700 dark:text-emerald-400 cursor-default"
+                              : "bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-800 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700"
+                          }`}
+                        >
+                          {alert.acknowledged
+                            ? `✓ ${t.liveMap.acknowledgedLabel}`
+                            : t.liveMap.acknowledgeBtn}
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 );

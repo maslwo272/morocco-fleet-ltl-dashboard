@@ -289,6 +289,11 @@ export function FleetFuelManagerPage({
   const [trkTargetL100, setTrkTargetL100] = useState("28.5");
   const [trkInsuranceExpiry, setTrkInsuranceExpiry] = useState("2027-06-30");
   const [trkVisiteExpiry, setTrkVisiteExpiry] = useState("2027-05-15");
+  const [trkGpsImei, setTrkGpsImei] = useState("");
+  const [trkGpsProvider, setTrkGpsProvider] = useState<
+    "traccar" | "teltonika" | "wialon" | "mobile_gps" | "manual"
+  >("traccar");
+  const [trkIgnoreReeferIdle, setTrkIgnoreReeferIdle] = useState(false);
 
   const handleApplyCapacityPreset = (presetId: string) => {
     setTrkSelectedCapacityPreset(presetId);
@@ -352,6 +357,9 @@ export function FleetFuelManagerPage({
     setTrkTargetL100(String(trk.targetConsumptionL100km ?? 28.5));
     setTrkInsuranceExpiry(trk.insuranceExpiry || "2027-06-30");
     setTrkVisiteExpiry(trk.visiteTechniqueExpiry || "2027-05-15");
+    setTrkGpsImei(trk.gpsDeviceImei || "");
+    setTrkGpsProvider(trk.gpsProvider || "traccar");
+    setTrkIgnoreReeferIdle(Boolean(trk.ignoreReeferIdleAlert));
   };
 
   const handleResetTruckForm = () => {
@@ -377,6 +385,9 @@ export function FleetFuelManagerPage({
     setTrkTargetL100("28.5");
     setTrkInsuranceExpiry("2027-06-30");
     setTrkVisiteExpiry("2027-05-15");
+    setTrkGpsImei("");
+    setTrkGpsProvider("traccar");
+    setTrkIgnoreReeferIdle(false);
   };
 
   const handleSubmitTruck = (e: React.FormEvent) => {
@@ -462,6 +473,9 @@ export function FleetFuelManagerPage({
           remainingDistanceKm: trkRoutePreview.distanceKm,
           insuranceExpiry: trkInsuranceExpiry,
           visiteTechniqueExpiry: trkVisiteExpiry,
+          gpsDeviceImei: trkGpsImei.trim() || undefined,
+          gpsProvider: trkGpsProvider,
+          ignoreReeferIdleAlert: trkIgnoreReeferIdle,
           temperatureC:
             trkTrailerType === "Reefer (Frigo ATP)" ? 3.5 : undefined,
         });
@@ -508,6 +522,9 @@ export function FleetFuelManagerPage({
         remainingDistanceKm: trkRoutePreview.distanceKm,
         insuranceExpiry: trkInsuranceExpiry,
         visiteTechniqueExpiry: trkVisiteExpiry,
+        gpsDeviceImei: trkGpsImei.trim() || undefined,
+        gpsProvider: trkGpsProvider,
+        ignoreReeferIdleAlert: trkIgnoreReeferIdle,
         temperatureC: trkTrailerType === "Reefer (Frigo ATP)" ? 3.5 : undefined,
       };
       onAddTruck(newTruck);
@@ -1368,6 +1385,59 @@ export function FleetFuelManagerPage({
               </div>
             </div>
 
+            {/* GPS Hardware Tracker Binding & Idling Rule */}
+            <div className="rounded-lg bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200/70 dark:border-sky-900/50 p-3 space-y-2.5 text-xs">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-700 dark:text-zinc-300 mb-1">
+                    GPS Device IMEI / ID
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 358742109482190"
+                    value={trkGpsImei}
+                    onChange={(e) => setTrkGpsImei(e.target.value)}
+                    className="w-full rounded bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 px-2.5 py-1.5 font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-700 dark:text-zinc-300 mb-1">
+                    GPS Data Provider
+                  </label>
+                  <select
+                    value={trkGpsProvider}
+                    onChange={(e) =>
+                      setTrkGpsProvider(
+                        e.target.value as
+                          | "traccar"
+                          | "teltonika"
+                          | "wialon"
+                          | "mobile_gps"
+                          | "manual"
+                      )
+                    }
+                    className="w-full rounded bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 px-2 py-1.5 text-xs"
+                  >
+                    <option value="traccar">Traccar (Teltonika / Ruptela)</option>
+                    <option value="teltonika">Teltonika Direct</option>
+                    <option value="wialon">Wialon / Existing Provider</option>
+                    <option value="mobile_gps">Driver Mobile GPS</option>
+                    <option value="manual">Manual Only</option>
+                  </select>
+                </div>
+              </div>
+              <label className="inline-flex items-center gap-2 cursor-pointer text-[11px] font-medium text-slate-700 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={trkIgnoreReeferIdle}
+                  onChange={(e) => setTrkIgnoreReeferIdle(e.target.checked)}
+                />
+                <span>
+                  Exempt Reefer / Frigo ATP from Idling Fuel-Burn Alerts (compressor needs engine)
+                </span>
+              </label>
+            </div>
+
             {/* Capacity, Pallets, Volume & Weight */}
             <div className="rounded-lg bg-slate-50/80 dark:bg-zinc-950/60 border border-slate-200/80 dark:border-zinc-800 p-3 space-y-2.5">
               <span className="text-[11px] font-bold uppercase text-slate-700 dark:text-zinc-300 flex items-center gap-1.5">
@@ -1651,6 +1721,11 @@ export function FleetFuelManagerPage({
                           <span className="font-mono text-[11px] text-slate-500 block">
                             {trk.plate}
                           </span>
+                          {trk.gpsDeviceImei && (
+                            <span className="inline-block mt-0.5 rounded bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 px-1.5 py-0.2 font-mono text-[10px] text-sky-700 dark:text-sky-300">
+                              GPS: {trk.gpsDeviceImei}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-2.5">
                           <span className="font-medium text-slate-800 dark:text-zinc-200 block">

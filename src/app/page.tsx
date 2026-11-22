@@ -35,6 +35,7 @@ import {
   Phone,
   Megaphone,
   CheckCircle2,
+  BellRing,
 } from "lucide-react";
 import {
   ARABIC_FONT_OPTIONS,
@@ -43,11 +44,15 @@ import {
   CompanyProfile,
   computeInstanceFinancials30d,
   DEFAULT_BRAND_THEME,
+  DEFAULT_GPS_ALERTS_CONFIG,
   DEFAULT_PLATFORM_CONFIG,
   DIESEL_PRICE_MAD_PER_LITER,
   DriverEcoRecord,
   FleetOperationalTask,
   FuelPurchaseRecord,
+  GpsAlertLogRow,
+  GpsAlertsConfig,
+  GpsTelemetryLatestRow,
   INITIAL_DEMO_INSTANCES,
   InstanceFleetData,
   LATIN_FONT_OPTIONS,
@@ -75,6 +80,7 @@ import { DriverEcoPage } from "@/components/DriverEcoPage";
 import { FleetFuelManagerPage } from "@/components/FleetFuelManagerPage";
 import { TasksOperationsPage } from "@/components/TasksOperationsPage";
 import { ClientBrandingStudioPage } from "@/components/ClientBrandingStudioPage";
+import { GpsAlertsStudioPage } from "@/components/GpsAlertsStudioPage";
 import { PortalAccessGate } from "@/components/PortalAccessGate";
 import { IbrahimAdminPortal } from "@/components/IbrahimAdminPortal";
 import { SupabaseModal } from "@/components/SupabaseModal";
@@ -108,6 +114,7 @@ function hydrateInstancesWithFleet(
         "tasks",
         "fleet-manager",
         "company-branding",
+        "gps-alerts",
       ] as ClientDemoTabId[])
     );
 
@@ -117,6 +124,10 @@ function hydrateInstancesWithFleet(
       themeConfig: {
         ...DEFAULT_BRAND_THEME,
         ...(inst.themeConfig || {}),
+      },
+      gpsAlertsConfig: {
+        ...DEFAULT_GPS_ALERTS_CONFIG,
+        ...(inst.gpsAlertsConfig || {}),
       },
       fleetData: {
         trucks: Array.isArray(inst.fleetData?.trucks)
@@ -177,6 +188,12 @@ export default function MoroccoFleetDashboard() {
   const [isDbModalOpen, setIsDbModalOpen] = useState(false);
   const [isStreamRunning, setIsStreamRunning] = useState<boolean>(true);
   const [hydrated, setHydrated] = useState(false);
+  const [clientLiveTelemetry, setClientLiveTelemetry] = useState<
+    GpsTelemetryLatestRow[]
+  >([]);
+  const [clientLiveAlertLogs, setClientLiveAlertLogs] = useState<
+    GpsAlertLogRow[]
+  >([]);
 
   // Strict Explicit Save Tracking & Baseline Snapshot for Undo/Discard
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
@@ -455,6 +472,128 @@ export default function MoroccoFleetDashboard() {
   );
   const fuelPriceMad =
     activeClientDemo?.fuelPriceMad ?? DIESEL_PRICE_MAD_PER_LITER;
+
+  const fetchClientGpsLive = useCallback(async () => {
+    const slug = activeClientDemo?.slug;
+    if (!slug) {
+      setClientLiveTelemetry([]);
+      setClientLiveAlertLogs([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/gps/live?slug=${encodeURIComponent(slug)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setClientLiveTelemetry(data.telemetry || []);
+        setClientLiveAlertLogs(data.alertLogs || []);
+      }
+    } catch {
+      // ignore network error during polling
+    }
+  }, [activeClientDemo?.slug]);
+
+  useEffect(() => {
+    if (sessionRole !== "client_demo" || !activeClientDemo?.slug) return;
+    fetchClientGpsLive();
+    if (!isStreamRunning) return;
+    const timer = setInterval(() => {
+      fetchClientGpsLive();
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [sessionRole, activeClientDemo?.slug, isStreamRunning, fetchClientGpsLive]);
+
+  const mergedClientTrucks = useMemo(() => {
+    if (!clientLiveTelemetry || clientLiveTelemetry.length === 0) {
+      return clientFleet.trucks;
+    }
+    return clientFleet.trucks.map((trk) => {
+      const live = clientLiveTelemetry.find(
+        (lt) =>
+          (trk.gpsDeviceImei &&
+            lt.device_imei.toLowerCase() === trk.gpsDeviceImei.toLowerCase()) ||
+          lt.truck_code.toLowerCase() === trk.code.toLowerCase()
+      );
+      if (!live) return trk;
+      const isIdling = live.ignition && Number(live.speed_kmh) <= 2;
+      const liveWastedL =
+        Math.round(((live.idle_minutes / 60) * 3.5) * 100) / 100;
+      return {
+        ...trk,
+        lat: Number(live.latitude),
+        lng: Number(live.longitude),
+        speedKmh: Number(live.speed_kmh),
+        ignitionOn: live.ignition,
+        idleMinutes: live.idle_minutes,
+        lastGpsPingAt: live.last_ping_at,
+        status: isIdling
+          ? live.idle_minutes >= 25
+            ? ("alert" as const)
+            : ("idling" as const)
+          : ("moving" as const),
+        wastedFuelLiters:
+          liveWastedL > 0 ? liveWastedL : trk.wastedFuelLiters,
+        wastedFuelMad:
+          liveWastedL > 0
+            ? Math.round(liveWastedL * fuelPriceMad * 100) / 100
+            : trk.wastedFuelMad,
+      };
+    });
+  }, [clientFleet.trucks, clientLiveTelemetry, fuelPriceMad]);
+
+  const mergedClientAlerts = useMemo((): TelemetryAlert[] => {
+    if (!clientLiveAlertLogs || clientLiveAlertLogs.length === 0) {
+      return clientFleet.alerts;
+    }
+    const mapped: TelemetryAlert[] = clientLiveAlertLogs.map((log) => {
+      const matchedTruck = mergedClientTrucks.find(
+        (t) =>
+          (t.gpsDeviceImei &&
+            t.gpsDeviceImei.toLowerCase() === log.device_imei.toLowerCase()) ||
+          t.code.toLowerCase() === log.truck_code.toLowerCase()
+      );
+      const firstLine = (log.message_text || "").split("\n")[0] || log.alert_type;
+      const summaryDetail =
+        log.delivery_detail || `${log.channel} (${log.delivery_status})`;
+      const mappedType: TelemetryAlert["type"] =
+        log.alert_type === "overspeed" ? "overspeed" : "idling";
+      const sev: TelemetryAlert["severity"] =
+        log.severity === "critical" ||
+        log.severity === "warning" ||
+        log.severity === "info" ||
+        log.severity === "success"
+          ? log.severity
+          : "warning";
+
+      return {
+        id: `gpslog-${log.id}`,
+        truckCode: log.truck_code,
+        truckId: matchedTruck?.id || log.device_imei,
+        type: mappedType,
+        severity: sev,
+        timestamp: new Date(log.created_at).toTimeString().slice(0, 8),
+        corridor: matchedTruck?.corridor || "Live GPS",
+        idleMinutes: log.idle_minutes,
+        wastedFuelLiters: log.wasted_fuel_liters,
+        wastedFuelMad: log.wasted_fuel_mad,
+        text: {
+          en: firstLine,
+          fr: firstLine,
+          ar: firstLine,
+        },
+        detail: {
+          en: summaryDetail,
+          fr: summaryDetail,
+          ar: summaryDetail,
+        },
+        acknowledged: log.acknowledged,
+      };
+    });
+    return [...mapped, ...clientFleet.alerts];
+  }, [clientLiveAlertLogs, clientFleet.alerts, mergedClientTrucks]);
 
   const builderId = activeEditInstance?.id || "";
   const builderFleet = useMemo(
@@ -809,6 +948,18 @@ export default function MoroccoFleetDashboard() {
 
   // Telemetry & Map Handlers for Active Client Demo View
   const handleAcknowledgeAlert = (alertId: string) => {
+    if (alertId.startsWith("gpslog-")) {
+      const logId = alertId.replace("gpslog-", "");
+      setClientLiveAlertLogs((prev) =>
+        prev.map((l) => (l.id === logId ? { ...l, acknowledged: true } : l))
+      );
+      fetch("/api/gps/live", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: logId, acknowledged: true }),
+      }).then(() => fetchClientGpsLive());
+      return;
+    }
     updateSpecificInstanceFleet(clientId, (f) => ({
       ...f,
       alerts: f.alerts.map((a) =>
@@ -1286,7 +1437,7 @@ export default function MoroccoFleetDashboard() {
       label: t.nav.liveMap,
       desc: t.nav.liveMapDesc,
       icon: MapPinned,
-      badge: clientFleet.alerts.filter((a) => !a.acknowledged).length,
+      badge: mergedClientAlerts.filter((a) => !a.acknowledged).length,
     },
     {
       id: "ltl-optimizer",
@@ -1344,6 +1495,23 @@ export default function MoroccoFleetDashboard() {
           ? "Logo, en-tête, pied de page"
           : "Logo, header, footer & theme",
       icon: Palette,
+    },
+    {
+      id: "gps-alerts",
+      label:
+        locale === "ar"
+          ? "تتبع GPS وتنبيهات واتساب/تيليجرام"
+          : locale === "fr"
+          ? "GPS & Alertes WhatsApp/Telegram"
+          : "GPS & WhatsApp/Telegram Alerts",
+      desc:
+        locale === "ar"
+          ? "مراقبة التوقف وحرق الوقود"
+          : locale === "fr"
+          ? "Ralenti moteur, traceurs & bots"
+          : "Idling alerts, trackers & bots",
+      icon: BellRing,
+      badge: clientLiveAlertLogs.filter((l) => !l.acknowledged).length,
     },
   ];
 
@@ -1880,8 +2048,8 @@ export default function MoroccoFleetDashboard() {
                         company={company}
                         fuelPriceMad={fuelPriceMad}
                         financials={dynamicFinancials30d}
-                        mapTrucks={clientFleet.trucks}
-                        alerts={clientFleet.alerts}
+                        mapTrucks={mergedClientTrucks}
+                        alerts={mergedClientAlerts}
                         fleetUtilizationPct={fleetUtilizationPct}
                         backhaulSavedMad={backhaulSavedMad}
                         onNavigateTab={setActiveTab}
@@ -1894,13 +2062,16 @@ export default function MoroccoFleetDashboard() {
                         t={t}
                         theme={theme}
                         fuelPriceMad={fuelPriceMad}
-                        trucks={clientFleet.trucks}
-                        alerts={clientFleet.alerts}
+                        trucks={mergedClientTrucks}
+                        alerts={mergedClientAlerts}
+                        drivers={clientFleet.drivers}
+                        liveTelemetry={clientLiveTelemetry}
                         isStreamRunning={isStreamRunning}
                         onToggleStream={() => setIsStreamRunning((v) => !v)}
                         onSimulateAlert={handleSimulateTelemetryEvent}
                         onAcknowledgeAlert={handleAcknowledgeAlert}
                         onStopTruckIdle={handleStopTruckIdle}
+                        onNavigateGpsStudio={() => setActiveTab("gps-alerts")}
                       />
                     )}
 
@@ -1991,6 +2162,36 @@ export default function MoroccoFleetDashboard() {
                         }}
                       />
                     )}
+
+                    {activeTab === "gps-alerts" && (
+                      <GpsAlertsStudioPage
+                        instance={activeClientDemo}
+                        platformConfig={platformConfig}
+                        trucks={mergedClientTrucks}
+                        drivers={clientFleet.drivers}
+                        liveTelemetry={clientLiveTelemetry}
+                        alertLogs={clientLiveAlertLogs}
+                        onSaveGpsConfig={async (updatedGps: GpsAlertsConfig) => {
+                          const merged: ClientDemoInstance = {
+                            ...activeClientDemo,
+                            gpsAlertsConfig: updatedGps,
+                          };
+                          handleUpdateDemoInstance(merged);
+                        }}
+                        onRefreshLive={fetchClientGpsLive}
+                        onAcknowledgeAlertLog={async (logId: string) => {
+                          await fetch("/api/gps/live", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              id: logId,
+                              acknowledged: true,
+                            }),
+                          });
+                          await fetchClientGpsLive();
+                        }}
+                      />
+                    )}
                   </motion.div>
                 </AnimatePresence>
               </main>
@@ -2050,8 +2251,8 @@ export default function MoroccoFleetDashboard() {
           isOpen={isDbModalOpen}
           onClose={() => setIsDbModalOpen(false)}
           t={t}
-          trucks={clientFleet.trucks}
-          alerts={clientFleet.alerts}
+          trucks={mergedClientTrucks}
+          alerts={mergedClientAlerts}
           shipments={scaledLtlShipments}
           drivers={clientFleet.drivers}
         />

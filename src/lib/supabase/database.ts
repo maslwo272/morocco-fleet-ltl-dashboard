@@ -23,7 +23,101 @@ export type ClientDemoTabId =
   | "driver-eco"
   | "tasks"
   | "fleet-manager"
-  | "company-branding";
+  | "company-branding"
+  | "gps-alerts";
+
+export interface GpsAlertsConfig {
+  enabled: boolean;
+  webhookSecret: string;
+  idleTier1Mins: number;
+  idleTier2Mins: number;
+  cooldownMins: number;
+  sendResolvedNotice: boolean;
+  idleFuelBurnLph: number;
+  overspeedEnabled: boolean;
+  overspeedThresholdKmh: number;
+  fuelDropEnabled: boolean;
+  fuelDropThresholdLiters: number;
+  telegramEnabled: boolean;
+  telegramChatId: string;
+  telegramManagerChatId: string;
+  telegramCustomBotToken: string;
+  whatsappEnabled: boolean;
+  whatsappDispatcherPhone: string;
+  whatsappManagerPhone: string;
+  whatsappCustomPhoneNumberId: string;
+  whatsappCustomAccessToken: string;
+  whatsappTemplateName: string;
+}
+
+export const DEFAULT_GPS_ALERTS_CONFIG: GpsAlertsConfig = {
+  enabled: true,
+  webhookSecret: "atlas-gps-2026",
+  idleTier1Mins: 10,
+  idleTier2Mins: 25,
+  cooldownMins: 20,
+  sendResolvedNotice: true,
+  idleFuelBurnLph: 3.5,
+  overspeedEnabled: true,
+  overspeedThresholdKmh: 90,
+  fuelDropEnabled: true,
+  fuelDropThresholdLiters: 15,
+  telegramEnabled: true,
+  telegramChatId: "",
+  telegramManagerChatId: "",
+  telegramCustomBotToken: "",
+  whatsappEnabled: false,
+  whatsappDispatcherPhone: "",
+  whatsappManagerPhone: "",
+  whatsappCustomPhoneNumberId: "",
+  whatsappCustomAccessToken: "",
+  whatsappTemplateName: "",
+};
+
+export interface GpsTelemetryLatestRow {
+  id: string;
+  instance_slug: string;
+  device_imei: string;
+  truck_code: string;
+  driver_name: string | null;
+  driver_phone: string | null;
+  provider: string;
+  latitude: number;
+  longitude: number;
+  speed_kmh: number;
+  ignition: boolean;
+  fuel_level_pct: number | null;
+  fuel_liters: number | null;
+  idle_started_at: string | null;
+  idle_minutes: number;
+  last_tier1_alert_at: string | null;
+  last_tier2_alert_at: string | null;
+  last_overspeed_alert_at: string | null;
+  last_fuel_drop_alert_at: string | null;
+  last_ping_at: string;
+  raw_payload?: Record<string, any> | null;
+}
+
+export interface GpsAlertLogRow {
+  id: string;
+  instance_slug: string;
+  device_imei: string;
+  truck_code: string;
+  driver_name: string | null;
+  alert_type: string;
+  severity: string;
+  idle_minutes: number;
+  wasted_fuel_liters: number;
+  wasted_fuel_mad: number;
+  latitude: number | null;
+  longitude: number | null;
+  channel: string;
+  delivery_status: string;
+  delivery_detail: string | null;
+  message_text: string;
+  acknowledged: boolean;
+  created_at: string;
+}
 
 export interface FooterCustomLink {
   label: string;
@@ -246,6 +340,7 @@ export interface ClientDemoInstance {
   notesForClient: string;
   createdAt: string;
   fleetData?: InstanceFleetData;
+  gpsAlertsConfig?: GpsAlertsConfig;
 }
 
 // ZERO PRE-LOADED DEMO INSTANCES — Ibrahim creates real client instances from scratch
@@ -274,6 +369,11 @@ export interface PlatformSystemConfig {
   masterAdminPassword: string;
   requireGateOnRoot: boolean;
   activeTheme: BrandThemeConfig;
+  // Central Hybrid GPS & Alert Messaging Credentials (Ibrahim Master Admin)
+  centralTelegramBotToken?: string;
+  centralWhatsappPhoneNumberId?: string;
+  centralWhatsappAccessToken?: string;
+  traccarServerUrl?: string;
 }
 
 export const DEFAULT_PLATFORM_CONFIG: PlatformSystemConfig = {
@@ -303,6 +403,10 @@ export const DEFAULT_PLATFORM_CONFIG: PlatformSystemConfig = {
   masterAdminPassword: process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "ibrahim2026",
   requireGateOnRoot: true,
   activeTheme: DEFAULT_BRAND_THEME,
+  centralTelegramBotToken: "",
+  centralWhatsappPhoneNumberId: "",
+  centralWhatsappAccessToken: "",
+  traccarServerUrl: "",
 };
 
 export interface CompanyProfile {
@@ -577,6 +681,12 @@ export interface MapTruck {
   insuranceExpiry?: string;
   visiteTechniqueExpiry?: string;
   notes?: string;
+  // Live GPS & Engine Ignition Tracking
+  gpsDeviceImei?: string;
+  gpsProvider?: "traccar" | "teltonika" | "wialon" | "mobile_gps" | "manual";
+  ignitionOn?: boolean;
+  lastGpsPingAt?: string;
+  ignoreReeferIdleAlert?: boolean;
 }
 
 export interface TelemetryAlert {
